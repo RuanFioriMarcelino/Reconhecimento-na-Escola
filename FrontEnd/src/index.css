@@ -1,0 +1,119 @@
+﻿@import "tailwindcss";
+
+/* =====================================================================
+   TOKENS DO TEMA
+   As cores continuam sendo variÃ¡veis CSS (como no protÃ³tipo original).
+   O bloco "@theme inline" abaixo sÃ³ as expÃµe ao Tailwind, entÃ£o
+   `bg-surface`, `text-ink-soft`, `border-line`... acompanham o modo
+   claro/escuro sozinhos â€” nenhum componente precisa usar `dark:`.
+   ===================================================================== */
+
+@layer base {
+  :root {
+    --bg: #F3F4F0; --surface: #FFFFFF; --surface-alt: #EAEBE5; --border: #DBDCD4;
+    --ink: #1B2130; --ink-soft: #5B6270; --ink-faint: #8B909B;
+    --primary: #223A5E; --primary-strong: #16273F; --primary-soft: #E1E7F0;
+    --accent: #B5772A; --accent-soft: #F3E5D1;
+    --good: #3F7D5C; --good-soft: #DEEEE5;
+    --warn: #B5772A; --warn-soft: #F3E5D1;
+    --danger: #AA4433; --danger-soft: #F4DED8;
+    --info: #3C6E9C; --info-soft: #DEE9F1;
+    --shadow: 0 1px 2px rgba(27,33,48,.07), 0 1px 1px rgba(27,33,48,.05);
+    --radius: 8px; /* usado sÃ³ pelo legacy.css */
+  }
+
+  /* escuro automÃ¡tico (preferÃªncia do sistema), a menos que data-theme="light" force o claro */
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #14171E; --surface: #1B2029; --surface-alt: #20262F; --border: #2C323E;
+      --ink: #ECEEF2; --ink-soft: #AEB4C0; --ink-faint: #767C8B;
+      --primary: #7996C0; --primary-strong: #9FB6D8; --primary-soft: #22314A;
+      --accent: #D99A4E; --accent-soft: #3A2C18;
+      --good: #5FAE85; --good-soft: #1E3327;
+      --warn: #D99A4E; --warn-soft: #3A2C18;
+      --danger: #D9887A; --danger-soft: #3A211D;
+      --info: #6FA0C9; --info-soft: #1E2C38;
+      --shadow: 0 1px 3px rgba(0,0,0,.5);
+    }
+  }
+
+  /* escuro forÃ§ado (data-theme="dark") */
+  :root[data-theme="dark"] {
+    --bg: #14171E; --surface: #1B2029; --surface-alt: #20262F; --border: #2C323E;
+    --ink: #ECEEF2; --ink-soft: #AEB4C0; --ink-faint: #767C8B;
+    --primary: #7996C0; --primary-strong: #9FB6D8; --primary-soft: #22314A;
+    --accent: #D99A4E; --accent-soft: #3A2C18;
+    --good: #5FAE85; --good-soft: #1E3327;
+    --warn: #D99A4E; --warn-soft: #3A2C18;
+    --danger: #D9887A; --danger-soft: #3A211D;
+    --info: #6FA0C9; --info-soft: #1E2C38;
+    --shadow: 0 1px 3px rgba(0,0,0,.5);
+  }
+}
+
+
+/* ─── animação do ponto "ao vivo" ──────────────────────────────────────────── */
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.35; }
+}
+
+@layer utilities {
+  .animate-pulse-dot {
+    animation: pulse-dot 1.8s ease-in-out infinite;
+  }
+}
+@theme static {
+  /* abaixo de 901px o menu lateral vira gaveta (`nav:` = a partir de 901px) */
+  --breakpoint-nav: 56.3125rem;
+
+  --font-display: 'Space Grotesk', 'Segoe UI', sans-serif;
+  --font-body: 'IBM Plex Sans', 'Segoe UI', sans-serif;
+  --font-mono: 'IBM Plex Mono', 'Consolas', monospace;
+
+  --radius-card: 8px;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-alt: var(--surface-alt);
+  --color-line: var(--border);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-ink-faint: var(--ink-faint);
+  --color-primary: var(--primary);
+  --color-primary-strong: var(--primary-strong);
+  --color-primary-soft: var(--primary-soft);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-good: var(--good);
+  --color-good-soft: var(--good-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+
+  --shadow-card: var(--shadow);
+}
+
+/* =====================================================================
+   BASE GLOBAL
+   ===================================================================== */
+@layer base {
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-body);
+    font-size: 14.5px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  h1, h2, h3 { font-family: var(--font-display); }
+  :focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; border-radius: 3px; }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 6px; }
+}
+
