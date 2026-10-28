@@ -43,8 +43,8 @@ A justificativa completa de cada escolha está no documento de infraestrutura, e
 
 ```
 .
-├── backend/       API em Django e regras de negócio
-├── frontend/      Painel web em React
+├── BackEnd/       API em Django e regras de negócio
+├── FrontEnd/      Painel web em React
 ├── portaria/      Módulo de captura e reconhecimento facial
 ├── docs/          Diagramas, documentação e relatórios
 └── README.md
@@ -66,22 +66,32 @@ A justificativa completa de cada escolha está no documento de infraestrutura, e
 ### Back-end
 
 ```bash
-cd backend
+cd BackEnd
 python -m venv venv
 source venv/bin/activate          # Windows: venv\Scripts\activate
 pip install -r requirements.txt
-cp .env.example .env              # preencher as credenciais do banco
+copy .env.example .env            # preencher as credenciais do banco
 python manage.py migrate
+python manage.py seed_mock
 python manage.py runserver
 ```
 
 ### Front-end
 
 ```bash
-cd frontend
+cd FrontEnd
 npm install
 npm run dev
 ```
+
+O painel React usa `http://localhost:8000/api` por padrão. Para apontar para outro
+servidor, crie `FrontEnd/.env` com `VITE_API_URL=http://servidor:8000/api`.
+O comando `seed_mock` recria os dados demonstrativos sem alterar o arquivo `banco.sql`.
+
+Em produção, defina `DJANGO_DEBUG=0`, uma `DJANGO_SECRET_KEY` forte,
+`DJANGO_ALLOWED_HOSTS` com os hosts reais, `FRONTEND_ORIGIN` com a origem HTTPS
+do painel e mantenha `DEMO_LOGIN=0`. O login atual é propositalmente apenas de
+demonstração; a autenticação real deve ser adicionada antes da publicação.
 
 ### Módulo de portaria
 
@@ -119,7 +129,10 @@ O quadro está organizado em seis colunas — Backlog, A fazer, Em desenvolvimen
 
 ## Situação atual
 
-Fase de levantamento de requisitos e definição da infraestrutura de trabalho. Os módulos ainda não foram implementados.
+O back-end Django já possui endpoints para autenticação de demonstração,
+bootstrap do painel, cadastro/ativação de pessoas e resolução de alertas.
+O comando `seed_mock` prepara dados para desenvolvimento e o front-end React
+consome a API automaticamente.
 
 ---
 

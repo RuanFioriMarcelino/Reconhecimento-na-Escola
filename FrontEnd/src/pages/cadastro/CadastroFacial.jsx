@@ -23,7 +23,7 @@ export default function CadastroFacial({ tipoInicial, onSubmitPerson, onNavigate
     setCapturando(true);
     setTimeout(() => { setCapturaFeita(true); setCapturando(false); }, 900);
   }
-  function submit(e) {
+  async function submit(e) {
     e.preventDefault();
     if (!nome || !documento || !grupo || !contatoNome || !contatoTelefone) {
       showToast('Preencha todos os campos obrigatórios', 'triangle'); return;
@@ -36,7 +36,7 @@ export default function CadastroFacial({ tipoInicial, onSubmitPerson, onNavigate
       tipo, nome, documento, grupo, turno, status: 'ativo',
       contatoNome, contatoTelefone, dataCadastro: '16/09/2026', dataRef: dataRef || '—'
     };
-    const id = onSubmitPerson(novo);
+    const id = await onSubmitPerson(novo);
     showToast(cfg.singular + ' cadastrado(a) com sucesso', 'check');
     onNavigate('pessoa', tipo, id);
   }

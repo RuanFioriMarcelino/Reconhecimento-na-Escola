@@ -16,6 +16,7 @@ import Monitoramento from './pages/monitoramento/Monitoramento.jsx';
 import Alertas from './pages/alertas/Alertas.jsx';
 import Relatorios from './pages/relatorios/Relatorios.jsx';
 import Configuracoes from './pages/configuracoes/Configuracoes.jsx';
+import { api } from './lib/api.js';
 
 export default function App() {
   const [loggedIn, setLoggedIn] = useState(false);
@@ -38,6 +39,7 @@ export default function App() {
     notifAtraso: true, notifAusencia: true, notifNaoReconhecido: false, limiteManha: '07:20', limiteTarde: '13:20'
   });
   const [toast, setToast] = useState(null);
+  const [apiReady, setApiReady] = useState(false);
 
   function showToast(msg, icon) { setToast({ msg, icon, key: Date.now() }); }
   useEffect(() => {
@@ -45,6 +47,18 @@ export default function App() {
     const t = setTimeout(() => setToast(null), 2600);
     return () => clearTimeout(t);
   }, [toast]);
+
+  useEffect(() => {
+    api.bootstrap().then(data => {
+      setPeople(data.people);
+      setLogs(data.logs);
+      setAlerts(data.alerts);
+      setSettings(data.settings);
+      setApiReady(true);
+    }).catch(() => {
+      showToast('API indisponível: usando dados locais de demonstração', 'triangle');
+    });
+  }, []);
 
   function navigate(view, ...params) { setSidebarOpen(false); navigateRaw(view, ...params); }
 
@@ -72,21 +86,37 @@ export default function App() {
     return () => clearInterval(id);
   }, [route.view]);
 
-  function addPerson(novo) {
-    const id = seedRef.current.nextPersonId++;
-    setPeople(cur => [...cur, { id, ...novo }]);
-    return id;
+  async function addPerson(novo) {
+    if (!apiReady) {
+      const id = seedRef.current.nextPersonId++;
+      setPeople(cur => [...cur, { id, ...novo }]);
+      return id;
+    }
+    const created = await api.createPerson(novo);
+    setPeople(cur => [...cur, created]);
+    return created.id;
   }
-  function setPersonStatus(id, status) {
+  async function setPersonStatus(id, status) {
+    if (apiReady) await api.setPersonStatus(id, status);
     setPeople(cur => cur.map(p => p.id === id ? { ...p, status } : p));
   }
-  function resolverAlerta(id) {
+  async function resolverAlerta(id) {
+    if (apiReady) await api.resolveAlert(id);
     setAlerts(cur => cur.map(a => a.id === id ? { ...a, status: 'resolvido' } : a));
     showToast('Alerta marcado como resolvido', 'check');
   }
 
   if (!loggedIn) {
-    return <Login onLogin={() => { setLoggedIn(true); navigate('dashboard'); showToast('Bem-vinda, Marina!', 'check'); }} />;
+    return <Login onLogin={async (email, senha) => {
+      try {
+        await api.login(email, senha);
+        setLoggedIn(true);
+        navigate('dashboard');
+        showToast('Bem-vinda, Marina!', 'check');
+      } catch (error) {
+        showToast(error.message, 'triangle');
+      }
+    }} />;
   }
 
   const pageTitle = (NAV.find(n => n.id === route.view) || { label: 'Perfil' }).label;

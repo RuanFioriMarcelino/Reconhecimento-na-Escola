@@ -1,7 +1,26 @@
 CREATE TABLE aluno (
     id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     nome TEXT NOT NULL,
+    documento TEXT NOT NULL UNIQUE,
+    turma TEXT NOT NULL,
+    turno TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'ativo',
+    contato_nome TEXT NOT NULL,
+    contato_telefone TEXT NOT NULL,
+    data_nascimento DATE,
     ativo BOOLEAN NOT NULL DEFAULT TRUE,
+    criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE funcionario (
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    nome TEXT NOT NULL,
+    documento TEXT NOT NULL UNIQUE,
+    cargo TEXT NOT NULL,
+    turno TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'ativo',
+    contato_nome TEXT NOT NULL,
+    contato_telefone TEXT NOT NULL,
+    data_admissao DATE,
     criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE TABLE responsavel (
@@ -50,6 +69,20 @@ CREATE TABLE registro_acesso (
     data_hora TIMESTAMPTZ NOT NULL DEFAULT now(),
     portal TEXT NOT NULL,
     incidente BOOLEAN NOT NULL DEFAULT FALSE
+);
+ALTER TABLE registro_acesso ADD COLUMN id_funcionario BIGINT
+    REFERENCES funcionario(id) ON DELETE SET NULL;
+ALTER TABLE registro_acesso ADD COLUMN tipo TEXT NOT NULL DEFAULT 'entrada';
+ALTER TABLE registro_acesso ADD COLUMN status TEXT NOT NULL DEFAULT 'reconhecido';
+CREATE TABLE alerta (
+    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    pessoa_tipo TEXT NOT NULL DEFAULT '',
+    pessoa_id BIGINT,
+    tipo TEXT NOT NULL,
+    descricao TEXT NOT NULL,
+    severidade TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'novo',
+    criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE TABLE notificacao_responsavel (
     id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,

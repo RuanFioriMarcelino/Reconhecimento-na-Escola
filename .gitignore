@@ -1,0 +1,32 @@
+# Python / Django
+BackEnd/.env
+BackEnd/.env.*
+!BackEnd/.env.example
+BackEnd/venv/
+BackEnd/.venv/
+BackEnd/__pycache__/
+BackEnd/**/__pycache__/
+BackEnd/*.py[cod]
+BackEnd/db.sqlite3
+BackEnd/db.sqlite3-*
+BackEnd/media/
+BackEnd/staticfiles/
+BackEnd/.pytest_cache/
+BackEnd/.coverage
+
+# Frontend
+FrontEnd/node_modules/
+FrontEnd/dist/
+FrontEnd/.vite/
+FrontEnd/.env
+FrontEnd/.env.*
+!FrontEnd/.env.example
+
+# Local tooling
+.vscode/
+.idea/
+*.log
+*.tmp
+*.swp
+Thumbs.db
+Desktop.ini

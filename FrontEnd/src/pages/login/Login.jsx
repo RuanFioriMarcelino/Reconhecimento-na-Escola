@@ -17,7 +17,7 @@ export default function Login({ onLogin }) {
         <p className="mb-6 text-[13.5px] text-ink-soft">
           Acesse para acompanhar o cadastro facial e a frequência da escola.
         </p>
-        <form onSubmit={(e) => { e.preventDefault(); onLogin(); }}>
+        <form onSubmit={(e) => { e.preventDefault(); onLogin(email, senha); }}>
           <Field label="E-mail institucional" className="mb-3">
             <Input type="email" value={email} onChange={e => setEmail(e.target.value)} required />
           </Field>
