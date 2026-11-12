@@ -5,7 +5,7 @@ export default function Relatorios({ people, logs }) {
   const dias = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex'];
   const rf = mulberry32(55);
   const valores = dias.map(() => 78 + Math.floor(rf() * 18));
-  const taxaReconhecimento = Math.round((logs.filter(l => l.status !== 'nao-reconhecido').length / logs.length) * 100);
+  const taxaReconhecimento = logs.length ? Math.round((logs.filter(l => l.status !== 'nao-reconhecido').length / logs.length) * 100) : 100;
   const alunos = people.filter(p => p.tipo === 'aluno' && p.status === 'ativo');
   const presentesAl = alunos.filter(x => logs.some(l => l.personId === x.id && l.tipo === 'entrada')).length;
 

@@ -48,43 +48,56 @@ export default function App() {
     return () => clearTimeout(t);
   }, [toast]);
 
-  useEffect(() => {
-    api.bootstrap().then(data => {
+  const syncBackend = async (silencioso = false) => {
+    try {
+      const data = await api.bootstrap();
       setPeople(data.people);
       setLogs(data.logs);
       setAlerts(data.alerts);
       setSettings(data.settings);
       setApiReady(true);
-    }).catch(() => {
-      showToast('API indisponível: usando dados locais de demonstração', 'triangle');
-    });
+    } catch {
+      if (!silencioso) {
+        showToast('API indisponível: usando dados locais de demonstração', 'triangle');
+      }
+      setApiReady(false);
+    }
+  };
+
+  useEffect(() => {
+    syncBackend(false);
   }, []);
 
   function navigate(view, ...params) { setSidebarOpen(false); navigateRaw(view, ...params); }
 
-  // feed "ao vivo" no Painel e no Monitoramento
+  // Sincronização em tempo real: busca os dados reais do PostgreSQL se a API estiver ativa,
+  // ou gera eventos locais de teste se a API estiver offline.
   useEffect(() => {
-    if (route.view !== 'dashboard' && route.view !== 'monitoramento') return;
-    const id = setInterval(() => {
-      setPeople(currentPeople => {
-        const ativos = currentPeople.filter(p => p.status === 'ativo');
-        if (!ativos.length) return currentPeople;
-        const p = pick(ativos);
-        const [ini, fim] = janelaDoTurno(p.turno);
-        const horaMin = ini + Math.floor(baseRng() * (fim - ini));
-        const atrasado = horaMin > limiteDoTurno(p.turno);
-        setLogs(curLogs => {
-          const novoId = seedRef.current.nextLogId++;
-          return [...curLogs, {
-            id: novoId, personId: p.id, tipo: 'entrada', horaMin,
-            status: atrasado ? 'atraso' : 'reconhecido', local: 'Portaria principal'
-          }];
+    if (!loggedIn) return;
+    const interval = setInterval(() => {
+      if (apiReady) {
+        syncBackend(true);
+      } else if (route.view === 'dashboard' || route.view === 'monitoramento') {
+        setPeople(currentPeople => {
+          const ativos = currentPeople.filter(p => p.status === 'ativo');
+          if (!ativos.length) return currentPeople;
+          const p = pick(ativos);
+          const [ini, fim] = janelaDoTurno(p.turno);
+          const horaMin = ini + Math.floor(baseRng() * (fim - ini));
+          const atrasado = horaMin > limiteDoTurno(p.turno);
+          setLogs(curLogs => {
+            const novoId = seedRef.current.nextLogId++;
+            return [...curLogs, {
+              id: novoId, personId: p.id, tipo: 'entrada', horaMin,
+              status: atrasado ? 'atraso' : 'reconhecido', local: 'Portaria principal'
+            }];
+          });
+          return currentPeople;
         });
-        return currentPeople;
-      });
-    }, 9000);
-    return () => clearInterval(id);
-  }, [route.view]);
+      }
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [loggedIn, apiReady, route.view]);
 
   async function addPerson(novo) {
     if (!apiReady) {
@@ -113,6 +126,7 @@ export default function App() {
         setLoggedIn(true);
         navigate('dashboard');
         showToast('Bem-vinda, Marina!', 'check');
+        syncBackend(true);
       } catch (error) {
         showToast(error.message, 'triangle');
       }
