@@ -182,3 +182,89 @@ def resolve_alert(request, alert_id):
     alert.status = "resolvido"
     alert.save(update_fields=["status"])
     return JsonResponse({"id": alert.id, "status": alert.status})
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def access_register(request):
+    try:
+        body = _json_body(request)
+        person_id = body.get("personId")
+        tipo = body.get("tipo", "entrada")
+        portal = body.get("portal", "Portaria principal")
+        status_req = body.get("status")
+
+        if tipo not in {"entrada", "saida"}:
+            return JsonResponse({"detail": "Tipo deve ser 'entrada' ou 'saida'."}, status=400)
+
+        person = None
+        person_tipo = None
+        if person_id:
+            try:
+                person, person_tipo = _find_person(int(person_id))
+            except (Aluno.DoesNotExist, Funcionario.DoesNotExist, ValueError):
+                return JsonResponse({"detail": "Pessoa informada não existe."}, status=404)
+
+        now = timezone.now()
+        local_now = timezone.localtime(now)
+        current_time_str = local_now.strftime("%H:%M")
+
+        if not person:
+            status = "nao-reconhecido"
+        elif status_req in {"reconhecido", "atraso", "nao-reconhecido"}:
+            status = status_req
+        else:
+            status = "reconhecido"
+            if tipo == "entrada":
+                turno = getattr(person, "turno", "Manhã")
+                if turno == "Manhã" and current_time_str > "07:20":
+                    status = "atraso"
+                elif turno == "Tarde" and current_time_str > "13:20":
+                    status = "atraso"
+
+        with transaction.atomic():
+            kwargs = {}
+            if person:
+                if person_tipo == "funcionario":
+                    kwargs["funcionario"] = person
+                else:
+                    kwargs["aluno"] = person
+            else:
+                kwargs["aluno"] = None
+                kwargs["funcionario"] = None
+
+            registro = RegistroAcesso.objects.create(
+                portal=portal,
+                tipo=tipo,
+                status=status,
+                data_hora=now,
+                **kwargs,
+            )
+
+            if status in {"atraso", "nao-reconhecido"}:
+                Alerta.objects.create(
+                    pessoa_tipo=person_tipo if person else "",
+                    pessoa_id=person.pk if person else None,
+                    tipo="Atraso na entrada" if status == "atraso" else "Tentativa não reconhecida",
+                    descricao=(
+                        f"Entrada com atraso registrada às {local_now.strftime('%H:%M')}."
+                        if status == "atraso"
+                        else "Reconhecimento facial não identificou nenhum cadastro na portaria."
+                    ),
+                    severidade="media" if status == "atraso" else "alta",
+                    status="novo",
+                )
+
+        return JsonResponse({
+            "id": registro.pk,
+            "personId": person_id,
+            "personName": person.nome if person else None,
+            "personType": person_tipo,
+            "tipo": registro.tipo,
+            "status": registro.status,
+            "portal": registro.portal,
+            "dataHora": registro.data_hora.isoformat(),
+        }, status=201)
+    except (json.JSONDecodeError, ValueError) as error:
+        return JsonResponse({"detail": str(error)}, status=400)
+

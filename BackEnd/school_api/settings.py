@@ -1,8 +1,11 @@
 import os
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import urlparse, unquote
+from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(BASE_DIR / ".env")
+
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "dev-only-change-me")
 DEBUG = os.getenv("DJANGO_DEBUG", "1") == "1"
 if not DEBUG and SECRET_KEY == "dev-only-change-me":
@@ -45,19 +48,31 @@ TEMPLATES = [{
 }]
 WSGI_APPLICATION = "school_api.wsgi.application"
 
-database_url = os.getenv("DATABASE_URL", "sqlite:///" + str(BASE_DIR / "db.sqlite3"))
-parsed = urlparse(database_url)
-if parsed.scheme.startswith("postgres"):
-    DATABASES = {"default": {
-        "ENGINE": "django.db.backends.postgresql",
-        "NAME": parsed.path.lstrip("/"),
-        "USER": parsed.username or "",
-        "PASSWORD": parsed.password or "",
-        "HOST": parsed.hostname or "localhost",
-        "PORT": str(parsed.port or 5432),
-    }}
+database_url = os.getenv("DATABASE_URL")
+if database_url:
+    parsed = urlparse(database_url)
+    db_name = parsed.path.lstrip("/")
+    db_user = unquote(parsed.username) if parsed.username else ""
+    db_password = unquote(parsed.password) if parsed.password else ""
+    db_host = parsed.hostname or "localhost"
+    db_port = str(parsed.port or 5432)
 else:
-    DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": BASE_DIR / "db.sqlite3"}}
+    db_name = os.getenv("DB_NAME", "escola")
+    db_user = os.getenv("DB_USER", "postgres")
+    db_password = os.getenv("DB_PASSWORD", "postgres")
+    db_host = os.getenv("DB_HOST", "localhost")
+    db_port = os.getenv("DB_PORT", "5432")
+
+DATABASES = {
+    "default": {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": db_name,
+        "USER": db_user,
+        "PASSWORD": db_password,
+        "HOST": db_host,
+        "PORT": db_port,
+    }
+}
 
 LANGUAGE_CODE = "pt-br"
 TIME_ZONE = "America/Sao_Paulo"

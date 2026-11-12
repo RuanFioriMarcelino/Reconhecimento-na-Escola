@@ -22,4 +22,8 @@ export const api = {
     method: 'PATCH', body: JSON.stringify({ status }),
   }),
   resolveAlert: id => request(`/alerts/${id}/resolve/`, { method: 'PATCH' }),
+  registerAccess: data => request('/access/', {
+    method: 'POST', body: JSON.stringify(data),
+  }),
 };
+
