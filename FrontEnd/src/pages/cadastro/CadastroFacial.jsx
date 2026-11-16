@@ -13,13 +13,15 @@ export default function CadastroFacial({ tipoInicial, onSubmitPerson, onNavigate
   const [contatoNome, setContatoNome] = useState('');
   const [contatoTelefone, setContatoTelefone] = useState('');
   const [capturaFeita, setCapturaFeita] = useState(false);
+  const [faceFile, setFaceFile] = useState(null);
   const [capturando, setCapturando] = useState(false);
 
   function trocarTipo(t) {
     setTipo(t); setNome(''); setDocumento(''); setGrupo(''); setDataRef('');
-    setContatoNome(''); setContatoTelefone(''); setCapturaFeita(false);
+    setContatoNome(''); setContatoTelefone(''); setCapturaFeita(false); setFaceFile(null);
   }
-  function simularCaptura() {
+  function simularCaptura(file) {
+    if (file) setFaceFile(file);
     setCapturando(true);
     setTimeout(() => { setCapturaFeita(true); setCapturando(false); }, 900);
   }
@@ -28,15 +30,15 @@ export default function CadastroFacial({ tipoInicial, onSubmitPerson, onNavigate
     if (!nome || !documento || !grupo || !contatoNome || !contatoTelefone) {
       showToast('Preencha todos os campos obrigatórios', 'triangle'); return;
     }
-    if (!capturaFeita) {
-      showToast('Simule a captura facial antes de concluir', 'triangle'); return;
+    if (!capturaFeita || !faceFile) {
+      showToast('Selecione uma foto facial antes de concluir', 'triangle'); return;
     }
     const turno = tipo === 'aluno' ? turnoDaTurma(grupo) : turnoManual;
     const novo = {
       tipo, nome, documento, grupo, turno, status: 'ativo',
       contatoNome, contatoTelefone, dataCadastro: '16/09/2026', dataRef: dataRef || '—'
     };
-    const id = await onSubmitPerson(novo);
+    const id = await onSubmitPerson(novo, faceFile);
     showToast(cfg.singular + ' cadastrado(a) com sucesso', 'check');
     onNavigate('pessoa', tipo, id);
   }
@@ -91,9 +93,13 @@ export default function CadastroFacial({ tipoInicial, onSubmitPerson, onNavigate
               <button type="button" className="btn btn-ghost" disabled={capturando} onClick={simularCaptura}>
                 <Icon name="scan" size={16} /> {capturaFeita ? 'Capturar novamente' : 'Simular captura'}
               </button>
+              <label className="btn btn-ghost" style={{ cursor: 'pointer' }}>
+                <Icon name="camera" size={16} /> Enviar foto
+                <input type="file" accept="image/*" hidden onChange={e => simularCaptura(e.target.files[0])} />
+              </label>
             </div>
             <p style={{ fontSize: 12, color: 'var(--ink-faint)', marginTop: 14 }}>
-              Neste protótipo a captura é simulada. Na versão final, esta etapa se conecta à câmera da portaria e ao motor de reconhecimento facial.
+              A foto é enviada ao cadastro facial e fica disponível para o motor da portaria.
             </p>
           </div>
         </div>

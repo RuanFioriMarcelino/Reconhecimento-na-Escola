@@ -38,6 +38,8 @@ export default function App() {
   const [settings, setSettings] = useState({
     notifAtraso: true, notifAusencia: true, notifNaoReconhecido: false, limiteManha: '07:20', limiteTarde: '13:20'
   });
+  const [turmas, setTurmas] = useState([]);
+  const [turnos, setTurnos] = useState([]);
   const [toast, setToast] = useState(null);
   const [apiReady, setApiReady] = useState(false);
 
@@ -55,6 +57,8 @@ export default function App() {
       setLogs(data.logs);
       setAlerts(data.alerts);
       setSettings(data.settings);
+      setTurmas(data.turmas || []);
+      setTurnos(data.turnos || []);
       setApiReady(true);
     } catch {
       if (!silencioso) {
@@ -99,15 +103,24 @@ export default function App() {
     return () => clearInterval(interval);
   }, [loggedIn, apiReady, route.view]);
 
-  async function addPerson(novo) {
+  async function addPerson(novo, faceFile) {
     if (!apiReady) {
       const id = seedRef.current.nextPersonId++;
       setPeople(cur => [...cur, { id, ...novo }]);
       return id;
     }
     const created = await api.createPerson(novo);
+    if (faceFile) await api.enrollFace(created.id, faceFile);
     setPeople(cur => [...cur, created]);
     return created.id;
+  }
+  async function editPerson(id, changes) {
+    if (apiReady) {
+      const updated = await api.updatePerson(id, changes);
+      setPeople(cur => cur.map(p => p.id === id ? updated : p));
+      return;
+    }
+    setPeople(cur => cur.map(p => p.id === id ? { ...p, ...changes } : p));
   }
   async function setPersonStatus(id, status) {
     if (apiReady) await api.setPersonStatus(id, status);
@@ -117,6 +130,11 @@ export default function App() {
     if (apiReady) await api.resolveAlert(id);
     setAlerts(cur => cur.map(a => a.id === id ? { ...a, status: 'resolvido' } : a));
     showToast('Alerta marcado como resolvido', 'check');
+  }
+  async function addClass(data) {
+    const created = await api.classesCreate(data);
+    if (data.tipo === 'turno') setTurnos(cur => [...cur, created]);
+    else setTurmas(cur => [...cur, created]);
   }
 
   if (!loggedIn) {
@@ -140,11 +158,11 @@ export default function App() {
     case 'alunos': content = <AlunosPage people={people} onNavigate={navigate} />; break;
     case 'funcionarios': content = <FuncionariosPage people={people} onNavigate={navigate} />; break;
     case 'cadastro': content = <CadastroFacial tipoInicial={route.params[0]} onSubmitPerson={addPerson} onNavigate={navigate} showToast={showToast} />; break;
-    case 'pessoa': content = <PerfilPessoa tipo={route.params[0]} id={parseInt(route.params[1], 10)} people={people} alerts={alerts} onNavigate={navigate} onSetStatus={setPersonStatus} showToast={showToast} />; break;
+    case 'pessoa': content = <PerfilPessoa tipo={route.params[0]} id={parseInt(route.params[1], 10)} people={people} alerts={alerts} onNavigate={navigate} onSetStatus={setPersonStatus} onEditPerson={editPerson} showToast={showToast} />; break;
     case 'monitoramento': content = <Monitoramento people={people} logs={logs} onNavigate={navigate} />; break;
     case 'alertas': content = <Alertas people={people} alerts={alerts} onResolver={resolverAlerta} />; break;
     case 'relatorios': content = <Relatorios people={people} logs={logs} />; break;
-    case 'configuracoes': content = <Configuracoes settings={settings} onChange={setSettings} showToast={showToast} />; break;
+    case 'configuracoes': content = <Configuracoes settings={settings} onChange={setSettings} turmas={turmas} turnos={turnos} onAddClass={addClass} showToast={showToast} />; break;
     default: content = <Dashboard people={people} logs={logs} alerts={alerts} onNavigate={navigate} />;
   }
 

@@ -2,8 +2,14 @@ import { useState } from 'react';
 import Icon from '../../icons/Icon.jsx';
 import ToggleRow from './ToggleRow.jsx';
 
-export default function Configuracoes({ settings, onChange, showToast }) {
+export default function Configuracoes({ settings, onChange, turmas, turnos, onAddClass, showToast }) {
   const [local, setLocal] = useState(settings);
+  const [className, setClassName] = useState('');
+  const [year, setYear] = useState(new Date().getFullYear());
+  const [turnoId, setTurnoId] = useState('');
+  const [turnoName, setTurnoName] = useState('');
+  const [turnoStart, setTurnoStart] = useState('07:00');
+  const [turnoLimit, setTurnoLimit] = useState('07:20');
   return (
     <div>
       <div className="page-head"><div><h1>Configurações</h1><p>Regras de horário e notificações do reconhecimento facial</p></div></div>
@@ -35,6 +41,40 @@ export default function Configuracoes({ settings, onChange, showToast }) {
             <tr><td>Catraca lateral</td><td>Câmera de entrada</td><td><span className="pill pill-good"><Icon name="check" size={11} /> Online</span></td></tr>
             <tr><td>Pátio coberto</td><td>Câmera de saída</td><td><span className="pill pill-neutral">Manutenção</span></td></tr>
           </tbody>
+        </table></div></div>
+      </div>
+      <div className="section"><h2 className="section-title">Turmas e turnos</h2>
+        <div className="grid-2">
+          <form className="card" style={{ padding: 18 }} onSubmit={async e => {
+            e.preventDefault();
+            await onAddClass({ tipo: 'turno', nome: turnoName, inicio: turnoStart, limiteEntrada: turnoLimit });
+            setTurnoName(''); showToast('Turno cadastrado', 'check');
+          }}>
+            <h3 className="section-title">Novo turno</h3>
+            <div className="field"><label>Nome</label><input value={turnoName} onChange={e => setTurnoName(e.target.value)} required placeholder="Manhã" /></div>
+            <div className="form-grid">
+              <div className="field"><label>Início</label><input type="time" value={turnoStart} onChange={e => setTurnoStart(e.target.value)} required /></div>
+              <div className="field"><label>Limite de entrada</label><input type="time" value={turnoLimit} onChange={e => setTurnoLimit(e.target.value)} required /></div>
+            </div>
+            <button className="btn btn-ghost" style={{ marginTop: 12 }}><Icon name="check" size={15} /> Cadastrar turno</button>
+          </form>
+          <form className="card" style={{ padding: 18 }} onSubmit={async e => {
+            e.preventDefault();
+            await onAddClass({ tipo: 'turma', nome: className, anoLetivo: year, turnoId });
+            setClassName(''); showToast('Turma cadastrada', 'check');
+          }}>
+            <h3 className="section-title">Nova turma</h3>
+            <div className="field"><label>Nome</label><input value={className} onChange={e => setClassName(e.target.value)} required placeholder="6º A" /></div>
+            <div className="form-grid">
+              <div className="field"><label>Ano letivo</label><input type="number" value={year} onChange={e => setYear(e.target.value)} required /></div>
+              <div className="field"><label>Turno</label><select value={turnoId} onChange={e => setTurnoId(e.target.value)} required><option value="">Selecione</option>{turnos.map(t => <option key={t.id} value={t.id}>{t.nome}</option>)}</select></div>
+            </div>
+            <button className="btn btn-ghost" style={{ marginTop: 12 }}><Icon name="check" size={15} /> Cadastrar turma</button>
+          </form>
+        </div>
+        <div className="card" style={{ marginTop: 12 }}><div className="table-wrap"><table>
+          <thead><tr><th>Turma</th><th>Ano</th><th>Turno</th></tr></thead>
+          <tbody>{turmas.map(t => <tr key={t.id}><td>{t.nome}</td><td>{t.anoLetivo}</td><td>{t.turno}</td></tr>)}</tbody>
         </table></div></div>
       </div>
       <button className="btn btn-primary" onClick={() => { onChange(local); showToast('Configurações salvas', 'check'); }}>

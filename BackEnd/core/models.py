@@ -3,6 +3,28 @@ from django.db import models
 from django.utils import timezone
 
 
+class Turno(models.Model):
+    nome = models.CharField(max_length=20, unique=True)
+    inicio = models.TimeField()
+    limite_entrada = models.TimeField()
+    ativo = models.BooleanField(default=True)
+
+    class Meta:
+        db_table = "turno"
+        ordering = ["inicio", "nome"]
+
+
+class Turma(models.Model):
+    nome = models.CharField(max_length=80, unique=True)
+    turno = models.ForeignKey(Turno, on_delete=models.PROTECT, related_name="turmas")
+    ano_letivo = models.PositiveIntegerField()
+    ativo = models.BooleanField(default=True)
+
+    class Meta:
+        db_table = "turma"
+        ordering = ["ano_letivo", "nome"]
+
+
 class Aluno(models.Model):
     class Status(models.TextChoices):
         ATIVO = "ativo", "Ativo"
@@ -12,6 +34,12 @@ class Aluno(models.Model):
     documento = models.CharField(max_length=32, unique=True, validators=[MinLengthValidator(3)])
     turma = models.CharField(max_length=80, validators=[MinLengthValidator(2)])
     turno = models.CharField(max_length=20)
+    turma_ref = models.ForeignKey(
+        Turma, null=True, blank=True, on_delete=models.PROTECT, related_name="alunos"
+    )
+    turno_ref = models.ForeignKey(
+        Turno, null=True, blank=True, on_delete=models.PROTECT, related_name="alunos"
+    )
     status = models.CharField(max_length=12, choices=Status.choices, default=Status.ATIVO)
     contato_nome = models.TextField()
     contato_telefone = models.CharField(max_length=32)

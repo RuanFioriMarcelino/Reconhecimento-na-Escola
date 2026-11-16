@@ -7,6 +7,8 @@ import cv2
 import numpy as np
 import requests
 
+cv2.setNumThreads(max(1, min(4, os.cpu_count() or 1)))
+
 API_URL = os.getenv("API_URL", "http://localhost:8000/api")
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ROSTOS_DIR = os.path.join(BASE_DIR, "rostos")
@@ -92,6 +94,36 @@ class PortariaReconhecimento:
                 except Exception as e:
                     print(f"[!] Erro ao carregar biometria {fname}: {e}")
 
+        for fname in os.listdir(ROSTOS_DIR):
+            if not fname.lower().endswith(".jpg"):
+                continue
+            feature_path = os.path.join(ROSTOS_DIR, os.path.splitext(fname)[0] + ".npy")
+            if os.path.exists(feature_path):
+                continue
+            try:
+                person_id = int(fname.split("_", 1)[0])
+                image = cv2.imread(os.path.join(ROSTOS_DIR, fname))
+                if image is None:
+                    continue
+                h, w = image.shape[:2]
+                self.detector.setInputSize((w, h))
+                _, faces = self.detector.detect(image)
+                if faces is None or len(faces) == 0:
+                    print(f"[!] Nenhum rosto detectado em {fname}")
+                    continue
+                feature = self.recognizer.feature(self.recognizer.alignCrop(image, faces[0]))
+                np.save(feature_path, feature)
+                person_info = self.people_dict.get(person_id, {})
+                self.enrolled_faces.append({
+                    "id": person_id,
+                    "nome": person_info.get("nome", fname.split("_", 1)[-1].rsplit(".", 1)[0].replace("_", " ").title()),
+                    "tipo": person_info.get("tipo", "aluno" if person_id < 10000 else "funcionario"),
+                    "grupo": person_info.get("grupo", ""),
+                    "feature": feature,
+                })
+            except (OSError, ValueError) as error:
+                print(f"[!] Erro ao processar cadastro web {fname}: {error}")
+
         print(f"[OK] {len(self.enrolled_faces)} biometria(s) facial(is) carregada(s).")
 
     def registrar_acesso(self, person_id=None, person_nome="Desconhecido", status_force=None):
@@ -156,6 +188,7 @@ class PortariaReconhecimento:
 
         source = video_path if video_path else cam_index
         cap = cv2.VideoCapture(source)
+        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
         if not cap.isOpened():
             print(f"\n[AVISO] Nenhuma câmera física acessível no índice {source}.")
@@ -249,7 +282,7 @@ class PortariaReconhecimento:
                             (15, h - 9), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (180, 180, 180), 1)
 
             cv2.imshow(window_name, frame)
-            key = cv2.waitKey(20) & 0xFF
+            key = cv2.waitKey(1) & 0xFF
             if key in (27, ord('q')):
                 break
             elif key == ord('s'):

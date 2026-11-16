@@ -1,9 +1,10 @@
 from datetime import date, timedelta
 
 from django.core.management.base import BaseCommand
+from django.contrib.auth.models import User
 from django.utils import timezone
 
-from core.models import Alerta, Aluno, Funcionario, RegistroAcesso
+from core.models import Alerta, Aluno, Funcionario, RegistroAcesso, Turma, Turno
 
 
 ALUNOS = ["Ana Beatriz Silva", "Bruno Costa Lima", "Carla Eduarda Santos", "Davi Henrique Oliveira",
@@ -20,6 +21,24 @@ class Command(BaseCommand):
     help = "Cria dados demonstrativos para validar o painel."
 
     def handle(self, *args, **options):
+        turnos = {
+            nome: Turno.objects.update_or_create(
+                nome=nome, defaults={"inicio": inicio, "limite_entrada": limite}
+            )[0]
+            for nome, inicio, limite in [
+                ("Manhã", "07:00", "07:20"), ("Tarde", "13:00", "13:20"), ("Integral", "07:00", "07:20")
+            ]
+        }
+        for i, nome in enumerate(TURMAS):
+            Turma.objects.update_or_create(
+                nome=nome, defaults={"ano_letivo": 2026, "turno": turnos["Tarde" if nome.startswith("9") else "Manhã"]}
+            )
+        user, _ = User.objects.update_or_create(
+            username="coordenacao@escola.edu.br",
+            defaults={"first_name": "Marina", "is_staff": True, "is_active": True},
+        )
+        user.set_password("protótipo")
+        user.save()
         RegistroAcesso.objects.all().delete()
         Alerta.objects.all().delete()
         Aluno.objects.all().delete()
@@ -28,9 +47,10 @@ class Command(BaseCommand):
         funcionarios = []
         for i, nome in enumerate(ALUNOS):
             turma = TURMAS[i % len(TURMAS)]
+            turma_obj = Turma.objects.get(nome=turma)
             alunos.append(Aluno.objects.create(
                 nome=nome, documento=f"2026{1000 + i}", turma=turma,
-                turno="Tarde" if turma.startswith("9") else "Manhã",
+                turno=turma_obj.turno.nome, turma_ref=turma_obj, turno_ref=turma_obj.turno,
                 status="inativo" if i == 8 else "ativo",
                 contato_nome=f"Responsável de {nome.split()[0]}",
                 contato_telefone=f"(48) 9{8000 + i:04d}-{1000 + i:04d}",

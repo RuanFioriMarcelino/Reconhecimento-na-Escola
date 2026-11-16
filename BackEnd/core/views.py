@@ -4,11 +4,12 @@ from datetime import date, datetime
 from django.conf import settings
 from django.db import IntegrityError, transaction
 from django.http import JsonResponse
+from django.contrib.auth import authenticate, login as auth_login, logout as auth_logout
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 from django.utils import timezone
 
-from .models import Alerta, Aluno, Funcionario, RegistroAcesso
+from .models import Alerta, Aluno, Funcionario, RegistroAcesso, Turma, Turno
 
 
 def _person(person, tipo):
@@ -93,6 +94,16 @@ def bootstrap(request):
         "people": people,
         "logs": _logs(),
         "alerts": _alerts(),
+        "turmas": [
+            {"id": turma.id, "nome": turma.nome, "anoLetivo": turma.ano_letivo,
+             "turnoId": turma.turno_id, "turno": turma.turno.nome}
+            for turma in Turma.objects.select_related("turno").filter(ativo=True)
+        ],
+        "turnos": [
+            {"id": turno.id, "nome": turno.nome, "inicio": turno.inicio.strftime("%H:%M"),
+             "limiteEntrada": turno.limite_entrada.strftime("%H:%M")}
+            for turno in Turno.objects.filter(ativo=True)
+        ],
         "settings": {
             "notifAtraso": True, "notifAusencia": True,
             "notifNaoReconhecido": False, "limiteManha": "07:20", "limiteTarde": "13:20",
@@ -109,9 +120,55 @@ def login(request):
         return JsonResponse({"detail": str(error)}, status=400)
     if not body.get("email") or not body.get("senha"):
         return JsonResponse({"detail": "E-mail e senha são obrigatórios."}, status=400)
-    if not settings.DEMO_LOGIN:
-        return JsonResponse({"detail": "Autenticação de produção ainda não configurada."}, status=503)
-    return JsonResponse({"token": "mock-session", "user": {"nome": "Marina", "perfil": "coordenação"}})
+    user = authenticate(request, username=body["email"], password=body["senha"])
+    if user is None and settings.DEMO_LOGIN:
+        return JsonResponse({"token": "mock-session", "user": {"nome": "Marina", "perfil": "coordenação"}})
+    if user is None:
+        return JsonResponse({"detail": "E-mail ou senha inválidos."}, status=401)
+    auth_login(request, user)
+    return JsonResponse({
+        "token": "session",
+        "user": {"nome": user.get_full_name() or user.username, "perfil": "coordenação"},
+    })
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def logout(request):
+    auth_logout(request)
+    return JsonResponse({"ok": True})
+
+
+@csrf_exempt
+@require_http_methods(["GET", "POST"])
+def classes(request):
+    if request.method == "GET":
+        return JsonResponse({
+            "turmas": [
+                {"id": item.id, "nome": item.nome, "anoLetivo": item.ano_letivo,
+                 "turnoId": item.turno_id, "turno": item.turno.nome}
+                for item in Turma.objects.select_related("turno").filter(ativo=True)
+            ],
+            "turnos": [
+                {"id": item.id, "nome": item.nome, "inicio": item.inicio.strftime("%H:%M"),
+                 "limiteEntrada": item.limite_entrada.strftime("%H:%M")}
+                for item in Turno.objects.filter(ativo=True)
+            ],
+        })
+    try:
+        body = _json_body(request)
+        if body.get("tipo") == "turno":
+            turno = Turno.objects.create(
+                nome=body["nome"], inicio=body["inicio"], limite_entrada=body["limiteEntrada"]
+            )
+            return JsonResponse({"id": turno.id, "nome": turno.nome}, status=201)
+        turno = Turno.objects.get(pk=body["turnoId"], ativo=True)
+        turma = Turma.objects.create(
+            nome=body["nome"], ano_letivo=int(body["anoLetivo"]), turno=turno
+        )
+        return JsonResponse({"id": turma.id, "nome": turma.nome, "turnoId": turma.turno_id}, status=201)
+    except (KeyError, ValueError, TypeError, Turno.DoesNotExist) as error:
+        return JsonResponse({"detail": f"Dados inválidos: {error}"}, status=400)
 
 
 @csrf_exempt
@@ -146,11 +203,69 @@ def people(request):
             if body["tipo"] == "funcionario":
                 person = Funcionario.objects.create(cargo=body["grupo"], data_admissao=parsed_date, **common)
             else:
-                person = Aluno.objects.create(turma=body["grupo"], data_nascimento=parsed_date, **common)
+                turma = Turma.objects.filter(pk=body.get("turmaId"), ativo=True).select_related("turno").first()
+                if turma:
+                    common["turno"] = turma.turno.nome
+                person = Aluno.objects.create(
+                    turma=body["grupo"], turma_ref=turma,
+                    turno_ref=turma.turno if turma else None,
+                    data_nascimento=parsed_date, **common
+                )
         return JsonResponse(_person(person, body["tipo"]), status=201)
     except IntegrityError:
         return JsonResponse({"detail": "Documento já cadastrado."}, status=409)
     except (json.JSONDecodeError, ValueError) as error:
+        return JsonResponse({"detail": str(error)}, status=400)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def facial_enrollment(request, person_id):
+    try:
+        person, tipo = _find_person(person_id)
+    except (Aluno.DoesNotExist, Funcionario.DoesNotExist):
+        return JsonResponse({"detail": "Pessoa não encontrada."}, status=404)
+    image = request.FILES.get("imagem")
+    if image is None or not image.content_type.startswith("image/"):
+        return JsonResponse({"detail": "Envie uma imagem válida no campo 'imagem'."}, status=400)
+    if image.size > 5 * 1024 * 1024:
+        return JsonResponse({"detail": "A imagem deve ter no máximo 5 MB."}, status=400)
+    filename = f"{person_id}_{person.nome.replace(' ', '_').lower()}.jpg"
+    target_dir = settings.BASE_DIR.parent / "portaria" / "rostos"
+    target_dir.mkdir(parents=True, exist_ok=True)
+    target = target_dir / filename
+    with target.open("wb") as output:
+        for chunk in image.chunks():
+            output.write(chunk)
+    return JsonResponse({"id": person_id, "tipo": tipo, "arquivo": filename}, status=201)
+
+
+@csrf_exempt
+@require_http_methods(["PATCH"])
+def person(request, person_id):
+    try:
+        person_obj, tipo = _find_person(person_id)
+        body = _json_body(request)
+        allowed = {
+            "nome": "nome", "documento": "documento", "contatoNome": "contato_nome",
+            "contatoTelefone": "contato_telefone", "turno": "turno",
+        }
+        for field, model_field in allowed.items():
+            if field in body and body[field]:
+                setattr(person_obj, model_field, body[field])
+        if tipo == "aluno" and body.get("grupo"):
+            person_obj.turma = body["grupo"]
+            if body.get("turmaId"):
+                person_obj.turma_ref = Turma.objects.get(pk=body["turmaId"])
+                person_obj.turno_ref = person_obj.turma_ref.turno
+                person_obj.turno = person_obj.turma_ref.turno.nome
+        elif tipo == "funcionario" and body.get("grupo"):
+            person_obj.cargo = body["grupo"]
+        person_obj.save()
+        return JsonResponse(_person(person_obj, tipo))
+    except (Aluno.DoesNotExist, Funcionario.DoesNotExist):
+        return JsonResponse({"detail": "Pessoa não encontrada."}, status=404)
+    except (json.JSONDecodeError, ValueError, KeyError, Turma.DoesNotExist) as error:
         return JsonResponse({"detail": str(error)}, status=400)
 
 
