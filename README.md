@@ -1,82 +1,147 @@
-# Sistema de Monitoramento de Entrada e Saída por Reconhecimento Facial
+# Reconhece+ v2.0 — Sistema Comercial de Monitoramento Escolar por Reconhecimento Facial
 
-Projeto Integrador do curso de Engenharia de Software do Centro Universitário UNISATC, desenvolvido para a **Escola Natálio Vassoler**.
-
----
-
-## Sobre o projeto
-
-A Escola Natálio Vassoler controla a entrada e a saída dos alunos de forma manual, com anotações em cadernos e listas de papel. A identificação depende do reconhecimento visual do funcionário da portaria, o que se torna inviável nos horários de pico. Como consequência, a escola não consegue saber em tempo real quais alunos estão dentro do prédio, o registro é lento e não existe histórico organizado de frequência.
-
-Este sistema informatiza esse processo por meio de reconhecimento facial, e é composto por dois módulos integrados:
-
-**Módulo de portaria** — captura a imagem no ponto de acesso, identifica o aluno pela comparação com a base cadastrada e registra automaticamente a passagem, com data, hora, sentido do movimento e grau de confiança da identificação.
-
-**Painel web** — permite à direção e à secretaria consultar quem está na escola no momento, pesquisar o histórico de movimentações por aluno ou por período e gerar relatórios de frequência, atrasos e saídas antecipadas.
+Plataforma completa de controle de presença e monitoramento de acesso escolar desenvolvida em arquitetura desacoplada para uso institucional e comercial — separando a **Estação Web de Cadastro Biométrico**, o **Back-End Seguro em Django + PostgreSQL** (com criptografia **AES-256-GCM** e auditoria LGPD) e o **Módulo Autônomo e Passivo de Portaria** em OpenCV (YuNet + SFace ONNX).
 
 ---
 
-## Equipe
+## Visão Geral da Versão 2.0
 
-| Integrante | Função | Responsabilidades |
-|---|---|---|
-| Bruno Vieira Correa | Back-end e Banco de Dados | API, modelagem do banco, integração com o módulo de reconhecimento facial e segurança da aplicação |
-| Ruan Fiori Marcelino | Gestão do Kanban e Cliente | Organização do quadro Kanban, acompanhamento das entregas e comunicação com a instituição |
-| Guilherme Rodrigues | Front-end | Telas do painel web, experiência do usuário e integração com a API |
+A v2.0 foi reestruturada para operação contínua em produção:
+
+1. **Separação clara entre Câmera de Registro e Câmera da Portaria**:
+   - **Câmera de Registro (Painel Web / `CameraCaptura.jsx` ou `portaria/cadastrar_rosto.py`)**: dedicada ao cadastro. Captura 3 quadros nítidos, valida rosto único/enquadramento/nitidez/consistência no servidor, extrai o vetor 128-d SFace em memória e salva apenas o vetor **criptografado em AES-256-GCM** no PostgreSQL (**zero fotos salvas em disco**).
+   - **Módulo de Portaria Passivo (`portaria/reconhecimento.py`)**: roda no totem/computador da entrada da escola com pipeline multi-thread de alta velocidade. Capta alunos e funcionários continuamente em movimento, **não exige autorização manual e nunca bloqueia passagens** — apenas identifica, alterna automaticamente **Entrada ↔ Saída** e emite avisos/alertas em tempo real.
+2. **Segurança e Conformidade LGPD**:
+   - Autenticação real via **Bearer Token (`AuthToken` com hash SHA-256 e TTL)** + sessões Django, controle de acesso por papéis (**RBAC**: `admin`, `coordenacao`, `secretaria`, `visualizador`) e proteção contra força bruta (rate limiting de 5 tentativas em 5 min).
+   - Terminais da portaria autenticam exclusivamente via chave própria por dispositivo (`X-Portaria-Key` com rotação no painel).
+   - Vetores biométricos (128-d) criptografados com **AES-256-GCM** + chaves derivadas por **HKDF-SHA256** e **AAD** vinculada ao titular (`aluno:<id>` / `funcionario:<id>`).
+   - Dados de responsáveis (CPF e telefone) protegidos com criptografia autenticada e índice cego **HMAC-SHA256** (`cpf_hash`).
+   - Registro explícito de consentimento LGPD, botão de revogação biométrica imediata e trilha completa em `log_auditoria`.
+
+---
+
+## Arquitetura do Sistema
+
+```mermaid
+flowchart LR
+    subgraph Estacao["Estação Administrativa (Navegador / Secretaria)"]
+        FE["FrontEnd React 18 + Vite"]
+        REG["CameraCaptura.jsx (WebRTC 3 quadros)"]
+    end
+
+    subgraph Portaria["Módulo de Portaria Passiva (Python)"]
+        CAM["CameraStream (CAP_DSHOW / RTSP)"]
+        TRK["FaceTracker (IoU multi-rosto)"]
+        ENG["RecognitionWorker (YuNet + SFace + NumPy)"]
+        SYN["SyncClient (Spool SQLite WAL + RAM)"]
+        CAM --> TRK --> ENG --> SYN
+    end
+
+    subgraph Core["BackEnd API & Dados"]
+        API["Django API + RBAC + Rate Limit"]
+        BIO["Biometrics & Access Services + AES-256-GCM"]
+        PG[("PostgreSQL 14+ (14 tabelas)")]
+        API --> BIO --> PG
+    end
+
+    FE -- "Bearer Token (CORS Restrito)" --> API
+    REG -- "POST /api/people/<id>/biometrics/" --> API
+    SYN -- "X-Portaria-Key (/api/portaria/*)" --> API
+```
+
+---
+
+## Fluxo Passivo Automático da Portaria
+
+O motor de regras (`BackEnd/core/services/access_service.py`) processa cada passagem recebida de forma não-bloqueante:
+
+- **Idempotência**: cada evento gera `clientEventId` único; reenvios da fila offline (`portaria/spool.db`) não duplicam registros.
+- **Cooldown anti-duplicidade**: ignora leituras repetidas da mesma pessoa dentro de `cooldown_segundos` (padrão `45s`).
+- **Entrada / Saída Automática (`modo = auto`)**:
+  - Primeira passagem do dia (ou após uma saída): registra **`entrada`**. Se após o horário limite do turno, marca status **`atraso`** e gera aviso/alerta.
+  - Passagem seguinte após `tempo_minimo_permanencia_min` (padrão `2 min`): registra **`saida`**. Para alunos que saem antes de `limite_saida_antecipada`, marca **`saida-antecipada`** e gera aviso/alerta.
+- **Cadastro inativo ou rosto desconhecido**: registra passagem com `incidente = True` e emite aviso discreto no HUD da portaria + alerta de severidade alta para a coordenação.
 
 ---
 
 ## Tecnologias
 
-| Camada | Tecnologia | Motivo da escolha |
-|---|---|---|
-| Front-end | React, HTML5, CSS3, JavaScript | Atualização da interface sem recarregar a página, necessária no painel em tempo real |
-| Back-end | Python, Django, Django REST Framework | Mesma linguagem do módulo de reconhecimento; autenticação, ORM e proteções de segurança nativas |
-| Banco de dados | PostgreSQL | Modelo relacional, suporte a transações e sem custo de licenciamento para a escola |
-| Reconhecimento facial | OpenCV com YuNet e SFace (ONNX) | Executa em processador comum, sem exigir placa de vídeo dedicada |
-
-A justificativa completa de cada escolha está no documento de infraestrutura, em `docs/`.
+| Camada | Tecnologias |
+|---|---|
+| **Front-end** | React 18, Vite 5, Tailwind CSS 4, WebRTC (`getUserMedia`) |
+| **Back-end** | Python 3.12, Django 5, `psycopg` (v3), `django-cors-headers`, `cryptography` (AES-256-GCM / HKDF / HMAC) |
+| **Banco de dados** | PostgreSQL 14+ (exclusivo, sem SQLite no servidor; índices `pg_trgm`, parciais e compostos) |
+| **Performance Web** | Paginação e filtros server-side (`/api/people/`, `/api/logs/`, `/api/alerts/`, `/api/audit/`), agregações SQL (`DISTINCT ON`, `TruncDate`) e polling incremental leve `/api/live/` |
+| **Visão Computacional** | OpenCV 5 (`cv2.FaceDetectorYN` YuNet + `cv2.FaceRecognizerSF` SFace ONNX) + matching vetorizado NumPy |
+| **Resiliência Offline** | Fila local SQLite em modo WAL (`portaria/spool.db`) para eventos de portaria |
 
 ---
 
-## Estrutura do repositório
+## Estrutura do Repositório
 
-```
+```text
 .
-├── BackEnd/       API em Django e regras de negócio
-├── FrontEnd/      Painel web em React
-├── portaria/      Módulo de captura e reconhecimento facial
-├── docs/          Diagramas, documentação e relatórios
+├── BackEnd/
+│   ├── core/
+│   │   ├── crypto/              # AES-256-GCM, HKDF-SHA256, HMAC blind index e mascaramento
+│   │   ├── management/commands/ # seed_mock.py (usuários RBAC, turnos, câmeras e histórico)
+│   │   ├── middleware/          # audit.py (Request ID, Client IP, Cache-Control, Permissions-Policy)
+│   │   ├── migrations/          # Histórico completo (0001 a 0007 com pg_trgm e índices parciais)
+│   │   ├── services/            # biometrics.py (YuNet/SFace + AES) e access_service.py (fluxo passivo)
+│   │   ├── models.py            # 14 modelos relacionais + constraints e índices
+│   │   ├── security.py          # AuthToken, RBAC, X-Portaria-Key, rate limiting e auditoria
+│   │   ├── tests.py             # Suíte automatizada (segurança, crypto, RBAC, fluxo passivo)
+│   │   └── views.py             # Endpoints REST v2.0 + /api/portaria/*
+│   ├── school_api/              # settings.py, urls.py, wsgi.py
+│   ├── .env.example
+│   └── requirements.txt
+├── FrontEnd/
+│   └── src/
+│       ├── components/          # CameraCaptura.jsx (estação web), Pills, Sidebar, Topbar, Toast
+│       ├── lib/                 # api.js (Bearer token em sessionStorage + handler 401)
+│       └── pages/               # Login, Dashboard, Alunos, Funcionários, Cadastro, Perfil, Monitoramento, Alertas, Relatórios, Configurações
+├── portaria/
+│   ├── camera.py                # CameraStream em thread dedicada (CAP_DSHOW / MJPG / RTSP)
+│   ├── tracker.py               # FaceTracker multi-rosto por IoU e centróide
+│   ├── engine.py                # RecognitionWorker (YuNet redimensionado + matching NumPy)
+│   ├── sync_client.py           # SyncClient (spool SQLite WAL, hot-reload RAM, heartbeat)
+│   ├── hud.py                   # HudRenderer passivo com avisos não-bloqueantes
+│   ├── reconhecimento.py        # Orquestrador principal da portaria (--source, --modo, --headless, --demo)
+│   ├── cadastrar_rosto.py       # Estação CLI alternativa para cadastro facial na API
+│   └── .env.example
+├── banco.sql                    # Referência DDL completa do PostgreSQL v2.0
 └── README.md
 ```
 
 ---
 
-## Como executar
-
-> Instruções preliminares. Serão detalhadas conforme os módulos forem implementados.
+## Como Executar
 
 ### Pré-requisitos
-
 - Python 3.11 ou 3.12
-- Node.js 18 ou superior
-- PostgreSQL 14 ou superior
-- Webcam (para o módulo de portaria)
+- Node.js 18+
+- PostgreSQL 14+ com banco `escola` criado (`CREATE DATABASE escola;`)
+- Webcam ou câmera IP RTSP (para cadastro e portaria)
 
-### Back-end
+### 1. Back-end (Django + PostgreSQL)
 
 ```bash
 cd BackEnd
 python -m venv venv
-source venv/bin/activate          # Windows: venv\Scripts\activate
+.\venv\Scripts\activate            # Linux/macOS: source venv/bin/activate
 pip install -r requirements.txt
-copy .env.example .env            # preencher as credenciais do banco
+copy .env.example .env             # Configure DATABASE_URL, BIOMETRIC_MASTER_KEY e PORTARIA_DEV_KEY
 python manage.py migrate
 python manage.py seed_mock
 python manage.py runserver
 ```
 
-### Front-end
+> **Credenciais iniciais criadas pelo `seed_mock` (apenas desenvolvimento):**
+> - **Admin:** `admin@escola.edu.br` / `Admin@2026`
+> - **Coordenação:** `coordenacao@escola.edu.br` / `Coord@2026`
+> - **Secretaria:** `secretaria@escola.edu.br` / `Sec@2026`
+
+### 2. Front-end (Painel Web + Câmera de Registro)
 
 ```bash
 cd FrontEnd
@@ -84,58 +149,54 @@ npm install
 npm run dev
 ```
 
-O painel React usa `http://localhost:8000/api` por padrão. Para apontar para outro
-servidor, crie `FrontEnd/.env` com `VITE_API_URL=http://servidor:8000/api`.
-O comando `seed_mock` recria os dados demonstrativos sem alterar o arquivo `banco.sql`.
+Acesse `http://localhost:5173` (para apontar para outro servidor, crie `FrontEnd/.env` com `VITE_API_URL=http://servidor:8000/api`).
 
-Em produção, defina `DJANGO_DEBUG=0`, uma `DJANGO_SECRET_KEY` forte,
-`DJANGO_ALLOWED_HOSTS` com os hosts reais, `FRONTEND_ORIGIN` com a origem HTTPS
-do painel e mantenha `DEMO_LOGIN=0`. O login atual é propositalmente apenas de
-demonstração; a autenticação real deve ser adicionada antes da publicação.
-
-### Módulo de portaria
+### 3. Módulo de Portaria Passivo
 
 ```bash
 cd portaria
-pip install -r requirements.txt
-python reconhecimento.py
+copy .env.example .env             # Informe a PORTARIA_DEVICE_KEY (X-Portaria-Key) do dispositivo
+..\BackEnd\venv\Scripts\python.exe reconhecimento.py
 ```
 
-Os modelos de reconhecimento (YuNet e SFace) são baixados automaticamente na primeira execução.
+Parâmetros opcionais úteis:
+- `--source 0` (webcam), `--source rtsp://...` (câmera IP) ou `--source video.mp4`
+- `--portal "Portaria principal"`
+- `--modo auto|entrada|saida`
+- `--headless` (roda sem interface gráfica, ideal para mini-PC/totem)
+- `--demo` (simulação interativa via terminal sem câmera)
 
 ---
 
-## Proteção de dados
+## Verificações e Testes
 
-O sistema trata dados biométricos de estudantes menores de idade, classificados como dados pessoais sensíveis pela Lei nº 13.709/2018 (LGPD). As seguintes medidas fazem parte do projeto:
+```bash
+# 1. Verificações do BackEnd (segurança, AES-256-GCM, RBAC e fluxo passivo)
+.\BackEnd\venv\Scripts\python.exe .\BackEnd\manage.py check
+.\BackEnd\venv\Scripts\python.exe .\BackEnd\manage.py test
 
-- Coleta de consentimento expresso dos responsáveis legais antes de qualquer cadastro biométrico
-- Armazenamento do vetor matemático extraído do rosto, e não da fotografia
-- Controle de acesso por perfil de usuário e registro de auditoria das consultas
-- Meio alternativo de identificação para quem não autorizar o uso da biometria
-- Prazo definido de retenção, com exclusão dos dados ao término do vínculo do aluno com a escola
+# 2. Build de produção do FrontEnd
+cd FrontEnd && npm run build
 
----
-
-## Gestão do projeto
-
-A equipe utiliza a metodologia **Kanban**, com quadro hospedado no Trello.
-
-Quadro do projeto: (https://trello.com/invite/b/6a7e46629e590c7bd6e3d664/ATTIc849a1a5f93ceacc0b951cad6656a649C132C1ED/sistema-de-monitoramento-de-acesso-escolar)
-
-O quadro está organizado em seis colunas — Backlog, A fazer, Em desenvolvimento, Em revisão, Validação e Concluído — com limites de trabalho em progresso definidos por coluna.
+# 3. Compilação dos módulos da Portaria
+.\BackEnd\venv\Scripts\python.exe -m py_compile portaria/*.py
+```
 
 ---
 
-## Situação atual
+## Segurança em Produção
 
-O back-end Django já possui endpoints para autenticação de demonstração,
-bootstrap do painel, cadastro/ativação de pessoas e resolução de alertas.
-O comando `seed_mock` prepara dados para desenvolvimento e o front-end React
-consome a API automaticamente.
+Antes de publicar em ambiente real:
+1. Defina `DJANGO_DEBUG=0`, uma `DJANGO_SECRET_KEY` forte (>= 32 caracteres) e gere `BIOMETRIC_MASTER_KEY` exclusiva com:
+   ```bash
+   python -c "import os,base64; print(base64.urlsafe_b64encode(os.urandom(32)).decode())"
+   ```
+2. Restrinja `DJANGO_ALLOWED_HOSTS` e `FRONTEND_ORIGINS` aos domínios HTTPS reais da escola.
+3. Cadastre cada câmera em **Configurações → Câmeras de portaria** para gerar chaves `X-Portaria-Key` individuais e remova/altere as contas de desenvolvimento do `seed_mock`.
+4. Leia sempre a política de proteção de dados da **Lei nº 13.709/2018 (LGPD)**: coleta mediante consentimento do responsável, armazenamento apenas do vetor matemático criptografado (nunca da fotografia), auditoria de acesso e revogação imediata quando solicitada.
 
 ---
 
 ## Licença
 
-Projeto acadêmico desenvolvido sem fins comerciais para o Projeto Integrador do curso de Engenharia de Software da UNISATC.
+Projeto acadêmico e comercial desenvolvido no curso de Engenharia de Software da UNISATC.

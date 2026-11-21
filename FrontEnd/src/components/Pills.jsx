@@ -2,6 +2,7 @@ import Icon from '../icons/Icon.jsx';
 
 export function LogStatusPill({ status }) {
   if (status === 'atraso') return <span className="pill pill-warn"><Icon name="clock" size={12} /> Atraso</span>;
+  if (status === 'saida-antecipada') return <span className="pill pill-warn"><Icon name="clock" size={12} /> Saída antecipada</span>;
   if (status === 'nao-reconhecido') return <span className="pill pill-danger"><Icon name="triangle" size={12} /> Não reconhecido</span>;
   return <span className="pill pill-good"><Icon name="check" size={12} /> Reconhecido</span>;
 }
@@ -16,6 +17,14 @@ export function TipoPill({ tipo }) {
   return tipo === 'funcionario'
     ? <span className="pill pill-info"><Icon name="briefcase" size={11} /> Funcionário</span>
     : <span className="pill pill-neutral"><Icon name="users" size={11} /> Aluno</span>;
+}
+
+export function BiometriaPill({ cadastrada, qualidade = null }) {
+  if (cadastrada) {
+    const qText = qualidade != null ? ` (${Math.round(qualidade * 100)}%)` : '';
+    return <span className="pill pill-good"><Icon name="check" size={11} /> Biometria ativa{qText}</span>;
+  }
+  return <span className="pill pill-warn"><Icon name="triangle" size={11} /> Biometria pendente</span>;
 }
 
 export function SevIcon({ sev }) {

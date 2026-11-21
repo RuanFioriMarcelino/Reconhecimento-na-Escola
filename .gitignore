@@ -14,6 +14,15 @@ BackEnd/staticfiles/
 BackEnd/.pytest_cache/
 BackEnd/.coverage
 
+# Portaria (biometria e spool local)
+portaria/.env
+portaria/.env.*
+!portaria/.env.example
+portaria/__pycache__/
+portaria/**/__pycache__/
+portaria/rostos/
+portaria/spool.db*
+
 # Frontend
 FrontEnd/node_modules/
 FrontEnd/dist/
