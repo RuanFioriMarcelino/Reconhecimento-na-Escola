@@ -22,12 +22,16 @@ function dataHojeFormatada() {
 export default function Dashboard({ user, liveTick, onNavigate }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
 
   const loadDashboard = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
       const res = await api.dashboard();
       setData(res);
+      setLoadError('');
+    } catch (err) {
+      setLoadError(err?.message || 'Não foi possível carregar o resumo do painel.');
     } finally {
       setLoading(false);
     }
@@ -66,6 +70,15 @@ export default function Dashboard({ user, liveTick, onNavigate }) {
           <Icon name="userplus" size={16} /> Novo cadastro
         </button>
       </div>
+
+      {loadError && (
+        <div role="alert" className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-danger bg-danger-soft px-4 py-2.5 text-sm text-ink">
+          <span>{loadError}</span>
+          <button type="button" className="btn btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }} onClick={() => loadDashboard(false)}>
+            Tentar novamente
+          </button>
+        </div>
+      )}
 
       <div className="stat-grid">
         <div className="card stat-card">

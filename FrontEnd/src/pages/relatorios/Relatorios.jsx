@@ -8,13 +8,15 @@ export default function Relatorios({ liveTick = 0, showToast }) {
   const [ate, setAte] = useState('');
   const [exporting, setExporting] = useState(false);
   const [data, setData] = useState(null);
+  const [loadError, setLoadError] = useState('');
 
   const loadReports = useCallback(async () => {
     try {
       const res = await api.dashboard();
       setData(res);
-    } catch {
-      // erro tratado no nível global se aplicável
+      setLoadError('');
+    } catch (err) {
+      setLoadError(err?.message || 'Não foi possível carregar os indicadores de relatório.');
     }
   }, []);
 
@@ -55,6 +57,15 @@ export default function Relatorios({ liveTick = 0, showToast }) {
           </button>
         </div>
       </div>
+
+      {loadError && (
+        <div role="alert" className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-danger bg-danger-soft px-4 py-2.5 text-sm text-ink">
+          <span>{loadError}</span>
+          <button type="button" className="btn btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }} onClick={loadReports}>
+            Tentar novamente
+          </button>
+        </div>
+      )}
 
       <div className="grid-2">
         <div className="card chart-card">

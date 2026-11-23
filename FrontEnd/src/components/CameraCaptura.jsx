@@ -10,17 +10,49 @@ export default function CameraCaptura({ onCaptured, errorText = '' }) {
   const [previewUrl, setPreviewUrl] = useState('');
   const [localError, setLocalError] = useState('');
 
+  function updatePreview(nextUrl) {
+    setPreviewUrl(prev => {
+      if (prev && typeof URL !== 'undefined' && typeof URL.revokeObjectURL === 'function') {
+        URL.revokeObjectURL(prev);
+      }
+      return nextUrl;
+    });
+  }
+
   function stopCamera() {
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(t => t.stop());
       streamRef.current = null;
     }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
     setCameraOn(false);
   }
 
   useEffect(() => {
-    return () => stopCamera();
+    return () => {
+      stopCamera();
+    };
   }, []);
+
+  useEffect(() => {
+    return () => {
+      if (previewUrl && typeof URL !== 'undefined' && typeof URL.revokeObjectURL === 'function') {
+        URL.revokeObjectURL(previewUrl);
+      }
+    };
+  }, [previewUrl]);
+
+  useEffect(() => {
+    if (cameraOn && videoRef.current && streamRef.current) {
+      videoRef.current.srcObject = streamRef.current;
+      const playPromise = videoRef.current.play?.();
+      if (playPromise && typeof playPromise.catch === 'function') {
+        playPromise.catch(() => {});
+      }
+    }
+  }, [cameraOn]);
 
   async function startCamera() {
     setLocalError('');
@@ -35,11 +67,6 @@ export default function CameraCaptura({ onCaptured, errorText = '' }) {
       });
       streamRef.current = stream;
       setCameraOn(true);
-      setTimeout(() => {
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-        }
-      }, 30);
     } catch {
       setLocalError('Permissão da câmera negada ou nenhuma webcam conectada. Você pode enviar uma foto.');
     }
@@ -65,7 +92,7 @@ export default function CameraCaptura({ onCaptured, errorText = '' }) {
         if (blob) {
           files.push(new File([blob], `captura_${i + 1}.jpg`, { type: 'image/jpeg' }));
           if (i === 0) {
-            setPreviewUrl(URL.createObjectURL(blob));
+            updatePreview(URL.createObjectURL(blob));
           }
         }
         setProgress(i + 1);
@@ -84,7 +111,7 @@ export default function CameraCaptura({ onCaptured, errorText = '' }) {
     if (!file) return;
     setLocalError('');
     stopCamera();
-    setPreviewUrl(URL.createObjectURL(file));
+    updatePreview(URL.createObjectURL(file));
     onCaptured([file]);
   }
 

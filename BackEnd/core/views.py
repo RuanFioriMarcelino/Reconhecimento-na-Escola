@@ -1,9 +1,11 @@
 import csv
 import json
 from datetime import date, datetime, time, timedelta
+from decimal import Decimal, InvalidOperation
 
 from django.conf import settings
 from django.contrib.auth import authenticate, login as auth_login, logout as auth_logout
+from django.core.exceptions import ValidationError
 from django.db import IntegrityError, connection, transaction
 from django.db.models import Count, Exists, Max, OuterRef, Q, Subquery
 from django.db.models.functions import TruncDate
@@ -768,26 +770,42 @@ def classes(request):
     try:
         body = _json_body(request)
         if body.get("tipo") == "turno":
-            turno = Turno.objects.create(
-                nome=clean_str(body["nome"], 20),
+            nome = clean_str(body.get("nome"), 20)
+            if not nome:
+                return JsonResponse({"detail": "Nome do turno é obrigatório."}, status=400)
+            turno = Turno(
+                nome=nome,
                 inicio=body["inicio"],
                 limite_entrada=body["limiteEntrada"],
                 termino=body.get("termino") or None,
                 limite_saida_antecipada=body.get("limiteSaidaAntecipada") or None,
             )
+            turno.full_clean(validate_unique=False)
+            with transaction.atomic():
+                turno.save()
             return JsonResponse({
                 "id": turno.id,
                 "nome": turno.nome,
-                "inicio": str(turno.inicio)[:5],
-                "limiteEntrada": str(turno.limite_entrada)[:5],
+                "inicio": turno.inicio.strftime("%H:%M") if hasattr(turno.inicio, "strftime") else str(turno.inicio)[:5],
+                "limiteEntrada": turno.limite_entrada.strftime("%H:%M") if hasattr(turno.limite_entrada, "strftime") else str(turno.limite_entrada)[:5],
+                "termino": turno.termino.strftime("%H:%M") if turno.termino and hasattr(turno.termino, "strftime") else (str(turno.termino)[:5] if turno.termino else None),
+                "limiteSaidaAntecipada": turno.limite_saida_antecipada.strftime("%H:%M")
+                if turno.limite_saida_antecipada and hasattr(turno.limite_saida_antecipada, "strftime")
+                else (str(turno.limite_saida_antecipada)[:5] if turno.limite_saida_antecipada else None),
             }, status=201)
 
+        nome = clean_str(body.get("nome"), 80)
+        if not nome:
+            return JsonResponse({"detail": "Nome da turma é obrigatório."}, status=400)
         turno = Turno.objects.get(pk=body["turnoId"], ativo=True)
-        turma = Turma.objects.create(
-            nome=clean_str(body["nome"], 80),
+        turma = Turma(
+            nome=nome,
             ano_letivo=int(body["anoLetivo"]),
             turno=turno,
         )
+        turma.full_clean(validate_unique=False)
+        with transaction.atomic():
+            turma.save()
         return JsonResponse({
             "id": turma.id,
             "nome": turma.nome,
@@ -797,7 +815,7 @@ def classes(request):
         }, status=201)
     except IntegrityError:
         return JsonResponse({"detail": "Turma ou turno com esse nome já existe."}, status=409)
-    except (KeyError, ValueError, TypeError, Turno.DoesNotExist) as error:
+    except (json.JSONDecodeError, KeyError, ValueError, TypeError, ValidationError, Turno.DoesNotExist) as error:
         return JsonResponse({"detail": f"Dados inválidos: {error}"}, status=400)
 
 
@@ -1030,15 +1048,15 @@ def person(request, person_ref):
     try:
         body = _json_body(request)
         allowed = {
-            "nome": "nome",
-            "documento": "documento",
-            "contatoNome": "contato_nome",
-            "contatoTelefone": "contato_telefone",
-            "turno": "turno",
+            "nome": ("nome", 150),
+            "documento": ("documento", 32),
+            "contatoNome": ("contato_nome", 150),
+            "contatoTelefone": ("contato_telefone", 32),
+            "turno": ("turno", 20),
         }
-        for field, model_field in allowed.items():
+        for field, (model_field, max_len) in allowed.items():
             if field in body and clean_str(body[field]):
-                setattr(person_obj, model_field, clean_str(body[field], 150))
+                setattr(person_obj, model_field, clean_str(body[field], max_len))
 
         if tipo == "aluno" and body.get("grupo"):
             person_obj.turma = clean_str(body["grupo"], 80)
@@ -1054,7 +1072,8 @@ def person(request, person_ref):
         elif tipo == "funcionario" and body.get("grupo"):
             person_obj.cargo = clean_str(body["grupo"], 100)
 
-        person_obj.save()
+        with transaction.atomic():
+            person_obj.save()
         registrar_auditoria(
             tabela=tipo,
             operacao="UPDATE",
@@ -1075,6 +1094,10 @@ def person(request, person_ref):
 def person_status(request, person_ref):
     try:
         person_obj, tipo = _find_person(person_ref)
+    except (Aluno.DoesNotExist, Funcionario.DoesNotExist, ValueError):
+        return JsonResponse({"detail": "Pessoa não encontrada."}, status=404)
+
+    try:
         body = _json_body(request)
         status = body.get("status")
         if status not in {"ativo", "inativo"}:
@@ -1092,8 +1115,6 @@ def person_status(request, person_ref):
         return JsonResponse({"id": f"{tipo}-{person_obj.pk}", "status": status})
     except (json.JSONDecodeError, ValueError):
         return JsonResponse({"detail": "Dados inválidos."}, status=400)
-    except (Aluno.DoesNotExist, Funcionario.DoesNotExist):
-        return JsonResponse({"detail": "Pessoa não encontrada."}, status=404)
 
 
 @csrf_exempt
@@ -1229,8 +1250,24 @@ def school_settings(request):
             "modoPassivo": "modo_passivo",
         }
         for json_key, field in mapping.items():
-            if json_key in body:
-                setattr(cfg, field, body[json_key])
+            if json_key not in body:
+                continue
+            val = body[json_key]
+            if json_key == "limiarConfianca":
+                if val in (None, ""):
+                    raise ValueError("Limiar de confiança não pode estar vazio.")
+                val = Decimal(str(round(float(val), 3)))
+            elif json_key in {"cooldownSegundos", "tempoMinimoPermanenciaMin", "retencaoLogsDias"}:
+                if val in (None, ""):
+                    raise ValueError(f"Campo {json_key} não pode estar vazio.")
+                val = int(val)
+            elif json_key == "nomeEscola":
+                val = clean_str(val, 150)
+                if not val:
+                    raise ValueError("Nome da escola não pode estar vazio.")
+            elif json_key in {"notifAtraso", "notifAusencia", "notifNaoReconhecido", "notifSaidaAntecipada", "modoPassivo"}:
+                val = bool(val)
+            setattr(cfg, field, val)
         cfg.full_clean()
         cfg.save()
         registrar_auditoria(
@@ -1241,7 +1278,7 @@ def school_settings(request):
             ip=getattr(request, "client_ip", None),
         )
         return JsonResponse({"settings": _settings_dict(cfg)})
-    except Exception as error:
+    except (json.JSONDecodeError, ValueError, TypeError, InvalidOperation, ValidationError) as error:
         return JsonResponse({"detail": f"Configuração inválida: {error}"}, status=400)
 
 
@@ -1263,14 +1300,15 @@ def devices(request):
             return JsonResponse({"detail": "sentidoPadrao deve ser auto, entrada ou saida."}, status=400)
 
         raw_key, prefix, digest = generate_secret("port")
-        dev = DispositivoPortaria.objects.create(
-            nome=nome,
-            portal=portal,
-            sentido_padrao=sentido,
-            api_key_hash=digest,
-            api_key_prefixo=prefix,
-            ativo=True,
-        )
+        with transaction.atomic():
+            dev = DispositivoPortaria.objects.create(
+                nome=nome,
+                portal=portal,
+                sentido_padrao=sentido,
+                api_key_hash=digest,
+                api_key_prefixo=prefix,
+                ativo=True,
+            )
         registrar_auditoria(
             tabela="dispositivo_portaria",
             operacao="INSERT",
@@ -1538,13 +1576,19 @@ def portaria_events(request):
 
         tipo_solicitado = ev.get("tipo") or dev.sentido_padrao or "auto"
         portal = clean_str(ev.get("portal") or dev.portal, 100)
+        conf_val = None
+        if ev.get("confianca") is not None:
+            try:
+                conf_val = max(0.0, min(1.0, float(ev["confianca"])))
+            except (TypeError, ValueError):
+                conf_val = None
         res = processar_passagem(
             person=person_obj,
             person_tipo=person_tipo,
             tipo_solicitado=tipo_solicitado,
             portal=portal,
             dispositivo=dev,
-            confianca=ev.get("confianca"),
+            confianca=conf_val,
             data_hora=data_hora,
             client_event_id=clean_str(ev.get("clientEventId"), 64) or None,
         )

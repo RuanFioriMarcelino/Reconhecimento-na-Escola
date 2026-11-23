@@ -26,6 +26,7 @@ export default function Monitoramento({ dispositivos = [], liveTick = 0, onNavig
   const [items, setItems] = useState([]);
   const [pagination, setPagination] = useState({ page: 1, pageSize: 25, total: 0, totalPages: 1, hasNext: false, hasPrev: false });
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -50,6 +51,9 @@ export default function Monitoramento({ dispositivos = [], liveTick = 0, onNavig
       });
       setItems(res.items || []);
       if (res.pagination) setPagination(res.pagination);
+      setLoadError('');
+    } catch (err) {
+      setLoadError(err?.message || 'Não foi possível carregar os registros de monitoramento.');
     } finally {
       setLoading(false);
     }
@@ -124,6 +128,15 @@ export default function Monitoramento({ dispositivos = [], liveTick = 0, onNavig
         <input type="date" value={de} onChange={e => { setDe(e.target.value); setPage(1); }} style={{ width: 145 }} title="Data inicial" />
         <input type="date" value={ate} onChange={e => { setAte(e.target.value); setPage(1); }} style={{ width: 145 }} title="Data final" />
       </div>
+
+      {loadError && (
+        <div role="alert" className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-danger bg-danger-soft px-4 py-2.5 text-sm text-ink">
+          <span>{loadError}</span>
+          <button type="button" className="btn btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }} onClick={fetchLogs}>
+            Tentar novamente
+          </button>
+        </div>
+      )}
 
       <div className="overflow-x-auto rounded-lg border border-line bg-surface shadow">
         {loading && items.length === 0 ? (

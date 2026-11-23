@@ -124,10 +124,18 @@ export default function Configuracoes({
           <h1>Configurações e segurança</h1>
           <p>Regras de entrada/saída passiva, câmeras de portaria e trilha de auditoria LGPD</p>
         </div>
-        <button className="btn btn-primary" disabled={savingSettings} onClick={handleSaveSettings}>
-          <Icon name="check" size={16} /> {savingSettings ? 'Salvando...' : 'Salvar configurações'}
-        </button>
+        {isGestor && (
+          <button className="btn btn-primary" disabled={savingSettings} onClick={handleSaveSettings}>
+            <Icon name="check" size={16} /> {savingSettings ? 'Salvando...' : 'Salvar configurações'}
+          </button>
+        )}
       </div>
+
+      {!isGestor && (
+        <div role="status" className="mb-4 rounded-lg border border-line bg-surface-alt px-4 py-2.5 text-sm text-ink-soft">
+          Modo somente leitura: apenas perfis de <strong>Administração</strong> ou <strong>Coordenação</strong> podem alterar parâmetros, câmeras de portaria e turmas.
+        </div>
+      )}
 
       <div className="grid-2">
         <div className="section" style={{ marginBottom: 0 }}>
@@ -135,64 +143,68 @@ export default function Configuracoes({
           <div className="card" style={{ padding: 18 }}>
             <div className="field" style={{ marginBottom: 12 }}>
               <label>Nome da instituição</label>
-              <input value={local.nomeEscola || ''} onChange={e => setLocal({ ...local, nomeEscola: e.target.value })} />
+              <input disabled={!isGestor} value={local.nomeEscola || ''} onChange={e => setLocal({ ...local, nomeEscola: e.target.value })} />
             </div>
             <div className="form-grid">
               <div className="field">
                 <label>Limite entrada — Manhã</label>
-                <input type="time" value={local.limiteManha} onChange={e => setLocal({ ...local, limiteManha: e.target.value })} />
+                <input disabled={!isGestor} type="time" value={local.limiteManha} onChange={e => setLocal({ ...local, limiteManha: e.target.value })} />
               </div>
               <div className="field">
                 <label>Limite entrada — Tarde</label>
-                <input type="time" value={local.limiteTarde} onChange={e => setLocal({ ...local, limiteTarde: e.target.value })} />
+                <input disabled={!isGestor} type="time" value={local.limiteTarde} onChange={e => setLocal({ ...local, limiteTarde: e.target.value })} />
               </div>
               <div className="field">
                 <label>Saída normal — Manhã</label>
-                <input type="time" value={local.saidaManha || '11:30'} onChange={e => setLocal({ ...local, saidaManha: e.target.value })} />
+                <input disabled={!isGestor} type="time" value={local.saidaManha || '11:30'} onChange={e => setLocal({ ...local, saidaManha: e.target.value })} />
               </div>
               <div className="field">
                 <label>Saída normal — Tarde</label>
-                <input type="time" value={local.saidaTarde || '17:30'} onChange={e => setLocal({ ...local, saidaTarde: e.target.value })} />
+                <input disabled={!isGestor} type="time" value={local.saidaTarde || '17:30'} onChange={e => setLocal({ ...local, saidaTarde: e.target.value })} />
               </div>
               <div className="field">
                 <label>Cooldown anti-duplicidade (seg)</label>
                 <input
+                  disabled={!isGestor}
                   type="number"
                   min={5}
                   max={600}
                   value={local.cooldownSegundos ?? 45}
-                  onChange={e => setLocal({ ...local, cooldownSegundos: Number(e.target.value) })}
+                  onChange={e => setLocal({ ...local, cooldownSegundos: e.target.value === '' ? '' : Number(e.target.value) })}
                 />
               </div>
               <div className="field">
                 <label>Permanência mín. p/ saída (min)</label>
                 <input
+                  disabled={!isGestor}
                   type="number"
                   min={1}
                   max={120}
                   value={local.tempoMinimoPermanenciaMin ?? 2}
-                  onChange={e => setLocal({ ...local, tempoMinimoPermanenciaMin: Number(e.target.value) })}
+                  onChange={e => setLocal({ ...local, tempoMinimoPermanenciaMin: e.target.value === '' ? '' : Number(e.target.value) })}
                 />
               </div>
               <div className="field">
                 <label>Limiar de confiança SFace (0.25–0.85)</label>
                 <input
+                  disabled={!isGestor}
                   type="number"
                   step="0.01"
                   min={0.25}
                   max={0.85}
                   value={local.limiarConfianca ?? 0.38}
-                  onChange={e => setLocal({ ...local, limiarConfianca: Number(e.target.value) })}
+                  onChange={e => setLocal({ ...local, limiarConfianca: e.target.value === '' ? '' : Number(e.target.value) })}
                 />
               </div>
               <div className="field">
                 <label>Retenção LGPD de logs (dias)</label>
                 <input
+                  disabled={!isGestor}
                   type="number"
                   min={30}
                   max={3650}
                   value={local.retencaoLogsDias ?? 365}
-                  onChange={e => setLocal({ ...local, retencaoLogsDias: Number(e.target.value) })}
+                  onChange={e => setLocal({ ...local, retencaoLogsDias: e.target.value === '' ? '' : Number(e.target.value) })}
                 />
               </div>
             </div>
@@ -203,30 +215,35 @@ export default function Configuracoes({
           <h2 className="section-title">Avisos automáticos da portaria</h2>
           <div className="card" style={{ padding: '6px 18px' }}>
             <ToggleRow
+              disabled={!isGestor}
               title="Modo passivo contínuo"
               desc="Registrar entradas/saídas sem exigir autorização manual na portaria"
               on={Boolean(local.modoPassivo)}
               onToggle={() => setLocal({ ...local, modoPassivo: !local.modoPassivo })}
             />
             <ToggleRow
+              disabled={!isGestor}
               title="Atrasos na entrada"
               desc="Gerar aviso quando o aluno passar após o limite do turno"
               on={Boolean(local.notifAtraso)}
               onToggle={() => setLocal({ ...local, notifAtraso: !local.notifAtraso })}
             />
             <ToggleRow
+              disabled={!isGestor}
               title="Saída antecipada"
               desc="Gerar aviso se o aluno sair antes do término das aulas"
               on={Boolean(local.notifSaidaAntecipada)}
               onToggle={() => setLocal({ ...local, notifSaidaAntecipada: !local.notifSaidaAntecipada })}
             />
             <ToggleRow
+              disabled={!isGestor}
               title="Ausências"
               desc="Avisar quando não houver registro de entrada"
               on={Boolean(local.notifAusencia)}
               onToggle={() => setLocal({ ...local, notifAusencia: !local.notifAusencia })}
             />
             <ToggleRow
+              disabled={!isGestor}
               title="Pessoas não cadastradas"
               desc="Gerar alerta quando um rosto desconhecido passar na portaria"
               on={Boolean(local.notifNaoReconhecido)}
@@ -267,6 +284,7 @@ export default function Configuracoes({
                     <td>{dev.portal}</td>
                     <td>
                       <select
+                        disabled={!isGestor}
                         value={dev.sentidoPadrao}
                         onChange={e => handleChangeSentido(dev, e.target.value)}
                         style={{ padding: '4px 8px', fontSize: 12 }}
@@ -290,14 +308,18 @@ export default function Configuracoes({
                       {dev.telemetria?.fps ? `${dev.telemetria.fps} FPS · ${dev.telemetria.aiMs || 0}ms` : 'Sem heartbeat'}
                     </td>
                     <td>
-                      <div style={{ display: 'flex', gap: 6 }}>
-                        <button className="btn btn-ghost" style={{ padding: '4px 8px', fontSize: 12 }} onClick={() => handleToggleDevice(dev)}>
-                          {dev.ativo ? 'Desativar' : 'Ativar'}
-                        </button>
-                        <button className="btn btn-ghost" style={{ padding: '4px 8px', fontSize: 12 }} onClick={() => handleRotateKey(dev)}>
-                          Nova chave
-                        </button>
-                      </div>
+                      {isGestor ? (
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          <button className="btn btn-ghost" style={{ padding: '4px 8px', fontSize: 12 }} onClick={() => handleToggleDevice(dev)}>
+                            {dev.ativo ? 'Desativar' : 'Ativar'}
+                          </button>
+                          <button className="btn btn-ghost" style={{ padding: '4px 8px', fontSize: 12 }} onClick={() => handleRotateKey(dev)}>
+                            Nova chave
+                          </button>
+                        </div>
+                      ) : (
+                        <span style={{ fontSize: 12, color: 'var(--ink-faint)' }}>Somente leitura</span>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -306,6 +328,7 @@ export default function Configuracoes({
           </div>
         </div>
 
+        {isGestor && (
         <form className="card" style={{ padding: 18, marginTop: 12 }} onSubmit={handleCreateDevice}>
           <h3 className="section-title">Cadastrar novo terminal de portaria</h3>
           <div className="form-grid" style={{ gridTemplateColumns: '1fr 1fr 180px auto', alignItems: 'end' }}>
@@ -328,10 +351,12 @@ export default function Configuracoes({
             <button type="submit" className="btn btn-ghost"><Icon name="check" size={15} /> Gerar dispositivo</button>
           </div>
         </form>
+        )}
       </div>
 
       <div className="section">
         <h2 className="section-title">Turmas e turnos</h2>
+        {isGestor && (
         <div className="grid-2">
           <form
             className="card"
@@ -385,6 +410,7 @@ export default function Configuracoes({
             <button className="btn btn-ghost" style={{ marginTop: 12 }}><Icon name="check" size={15} /> Cadastrar turma</button>
           </form>
         </div>
+        )}
         <div className="card" style={{ marginTop: 12 }}>
           <div className="table-wrap">
             <table>

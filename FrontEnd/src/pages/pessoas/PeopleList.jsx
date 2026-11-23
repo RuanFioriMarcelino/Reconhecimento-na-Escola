@@ -26,6 +26,7 @@ export default function PeopleList({ tipo, turmas = [], liveTick = 0, onNavigate
   const [items, setItems] = useState([]);
   const [pagination, setPagination] = useState({ page: 1, pageSize: 24, total: 0, totalPages: 1, hasNext: false, hasPrev: false });
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
 
   const grupoOptions =
     tipo === 'aluno' && turmas.length > 0 ? turmas.map(t => t.nome) : cfg.grupoOptions;
@@ -59,6 +60,9 @@ export default function PeopleList({ tipo, turmas = [], liveTick = 0, onNavigate
       });
       setItems(res.items || []);
       if (res.pagination) setPagination(res.pagination);
+      setLoadError('');
+    } catch (err) {
+      setLoadError(err?.message || 'Não foi possível carregar a listagem.');
     } finally {
       setLoading(false);
     }
@@ -122,6 +126,15 @@ export default function PeopleList({ tipo, turmas = [], liveTick = 0, onNavigate
           <option value="nao">Biometria pendente</option>
         </select>
       </div>
+
+      {loadError && (
+        <div role="alert" className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-danger bg-danger-soft px-4 py-2.5 text-sm text-ink">
+          <span>{loadError}</span>
+          <button type="button" className="btn btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }} onClick={fetchPeople}>
+            Tentar novamente
+          </button>
+        </div>
+      )}
 
       {loading && items.length === 0 ? (
         <div className="rounded-lg border border-line bg-surface p-10 text-center text-ink-faint shadow">

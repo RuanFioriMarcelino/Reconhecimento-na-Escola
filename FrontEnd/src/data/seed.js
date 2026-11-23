@@ -14,12 +14,15 @@ export const baseRng = mulberry32(1337);
 export function pick(arr) { return arr[Math.floor(baseRng() * arr.length)]; }
 export function pad(n) { return n < 10 ? '0' + n : '' + n; }
 export function fmtMin(mins) {
-  const h = Math.floor(mins / 60), m = mins % 60;
+  const numeric = Number(mins);
+  if (!Number.isFinite(numeric) || numeric < 0) return '--:--';
+  const h = Math.floor(numeric / 60), m = Math.floor(numeric % 60);
   return pad(h) + ':' + pad(m);
 }
 function hashStr(s) {
+  const str = String(s || '');
   let h = 0;
-  for (let i = 0; i < s.length; i++) { h = (h * 31 + s.charCodeAt(i)) >>> 0; }
+  for (let i = 0; i < str.length; i++) { h = (h * 31 + str.charCodeAt(i)) >>> 0; }
   return h;
 }
 const AVATAR_HUES = [210, 20, 160, 280, 35, 190, 340, 90, 255, 10];
@@ -27,8 +30,12 @@ export function avatarColor(name) {
   return 'hsl(' + AVATAR_HUES[hashStr(name) % AVATAR_HUES.length] + ', 38%, 40%)';
 }
 export function initials(name) {
-  const p = name.trim().split(/\s+/);
-  return (p[0][0] + (p[p.length - 1][0] || '')).toUpperCase();
+  const clean = String(name || '').trim();
+  if (!clean) return '?';
+  const p = clean.split(/\s+/).filter(Boolean);
+  if (!p.length) return '?';
+  if (p.length === 1) return p[0].slice(0, 2).toUpperCase();
+  return (p[0][0] + p[p.length - 1][0]).toUpperCase();
 }
 
 /* =====================================================================

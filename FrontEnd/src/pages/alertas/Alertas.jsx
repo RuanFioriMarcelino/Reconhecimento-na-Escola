@@ -12,6 +12,7 @@ export default function Alertas({ liveTick = 0, onAlertChanged, showToast }) {
   const [openCount, setOpenCount] = useState(0);
   const [pagination, setPagination] = useState({ page: 1, pageSize: 20, total: 0, totalPages: 1, hasNext: false, hasPrev: false });
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
 
   const fetchAlerts = useCallback(async () => {
     setLoading(true);
@@ -20,6 +21,9 @@ export default function Alertas({ liveTick = 0, onAlertChanged, showToast }) {
       setItems(res.items || []);
       setOpenCount(res.openCount ?? 0);
       if (res.pagination) setPagination(res.pagination);
+      setLoadError('');
+    } catch (err) {
+      setLoadError(err?.message || 'Não foi possível carregar os alertas.');
     } finally {
       setLoading(false);
     }
@@ -70,6 +74,15 @@ export default function Alertas({ liveTick = 0, onAlertChanged, showToast }) {
           <option value="baixa">Baixa</option>
         </select>
       </div>
+
+      {loadError && (
+        <div role="alert" className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-danger bg-danger-soft px-4 py-2.5 text-sm text-ink">
+          <span>{loadError}</span>
+          <button type="button" className="btn btn-ghost" style={{ padding: '4px 10px', fontSize: 12 }} onClick={fetchAlerts}>
+            Tentar novamente
+          </button>
+        </div>
+      )}
 
       {loading && items.length === 0 ? (
         <div className="card empty">Carregando alertas...</div>

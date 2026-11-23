@@ -170,16 +170,35 @@ Parâmetros opcionais úteis:
 
 ## Verificações e Testes
 
-```bash
-# 1. Verificações do BackEnd (segurança, AES-256-GCM, RBAC e fluxo passivo)
-.\BackEnd\venv\Scripts\python.exe .\BackEnd\manage.py check
-.\BackEnd\venv\Scripts\python.exe .\BackEnd\manage.py test
+O projeto possui uma suíte automatizada em 6 camadas (unitários, integração, interface, portaria offline e smoke test HTTP de implantação) + pipeline CI em `.github/workflows/ci.yml`.
 
-# 2. Build de produção do FrontEnd
-cd FrontEnd && npm run build
+### Rodar tudo de uma vez (Windows PowerShell)
 
-# 3. Compilação dos módulos da Portaria
-.\BackEnd\venv\Scripts\python.exe -m py_compile portaria/*.py
+```powershell
+.\scripts\run_all_tests.ps1
+```
+
+### Rodar cada camada separadamente
+
+```powershell
+# 1. BackEnd — Unitários (criptografia AES-256-GCM, serviços), Integração (API/RBAC) e Implantação (migrations, índices pg_trgm, seed_mock idempotente)
+cd BackEnd
+.\venv\Scripts\python.exe manage.py check
+.\venv\Scripts\python.exe manage.py makemigrations core --check --dry-run
+.\venv\Scripts\python.exe manage.py test core --verbosity=2
+
+# 2. Portaria — Tracker multi-rosto, matching vetorizado, fila offline SQLite WAL e HUD
+cd ..
+.\BackEnd\venv\Scripts\python.exe -m unittest discover -s portaria/tests -t . -v
+
+# 3. FrontEnd — Testes unitários/componentes/páginas (Vitest + Testing Library) e build de produção
+cd FrontEnd
+npm test
+npm run build
+
+# 4. Implantação — Smoke test HTTP ponta a ponta contra o PostgreSQL
+cd ..
+.\BackEnd\venv\Scripts\python.exe .\scripts\smoke_deploy.py
 ```
 
 ---

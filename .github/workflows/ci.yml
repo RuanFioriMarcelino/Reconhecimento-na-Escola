@@ -1,0 +1,89 @@
+name: CI — Testes Unitários, Integração e Implantação
+
+on:
+  push:
+    branches: [main, desenvolvimento]
+  pull_request:
+    branches: [main, desenvolvimento]
+
+jobs:
+  backend-and-portaria:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: escola
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://postgres:ci_password@localhost:5432/escola
+      DJANGO_DEBUG: "1"
+      DJANGO_SECRET_KEY: "ci-secret-key-com-mais-de-32-caracteres-seguros"
+      BIOMETRIC_MASTER_KEY: "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
+      PORTARIA_DEV_KEY: "port_ci_device_key_1234567890"
+      DEMO_LOGIN: "0"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configurar Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Instalar dependências BackEnd e Portaria
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r BackEnd/requirements.txt
+
+      - name: Django check, migrations e suíte completa de testes
+        working-directory: BackEnd
+        run: |
+          python manage.py check
+          python manage.py makemigrations core --check --dry-run
+          python manage.py migrate --noinput
+          python manage.py seed_mock
+          python manage.py test core --verbosity=2
+
+      - name: Testes unitários da Portaria
+        run: |
+          python -m py_compile portaria/*.py
+          python -m unittest discover -s portaria/tests -t . -v
+
+      - name: Smoke test HTTP de implantação
+        run: python scripts/smoke_deploy.py
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: FrontEnd
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configurar Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: FrontEnd/package-lock.json
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Testes unitários e de integração (Vitest)
+        run: npm test
+
+      - name: Build de produção (Vite)
+        run: npm run build
