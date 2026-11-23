@@ -85,22 +85,24 @@ O motor de regras (`BackEnd/core/services/access_service.py`) processa cada pass
 │   ├── core/
 │   │   ├── crypto/              # AES-256-GCM, HKDF-SHA256, HMAC blind index e mascaramento
 │   │   ├── management/commands/ # seed_mock.py (usuários RBAC, turnos, câmeras e histórico)
-│   │   ├── middleware/          # audit.py (Request ID, Client IP, Cache-Control, Permissions-Policy)
+│   │   ├── middleware/          # audit.py (Request ID, Client IP, Cache-Control, JSON 500)
 │   │   ├── migrations/          # Histórico completo (0001 a 0007 com pg_trgm e índices parciais)
 │   │   ├── services/            # biometrics.py (YuNet/SFace + AES) e access_service.py (fluxo passivo)
+│   │   ├── tests/               # Suíte automatizada (cripto/segurança, serviços, API/RBAC, implantação)
 │   │   ├── models.py            # 14 modelos relacionais + constraints e índices
 │   │   ├── security.py          # AuthToken, RBAC, X-Portaria-Key, rate limiting e auditoria
-│   │   ├── tests.py             # Suíte automatizada (segurança, crypto, RBAC, fluxo passivo)
 │   │   └── views.py             # Endpoints REST v2.0 + /api/portaria/*
 │   ├── school_api/              # settings.py, urls.py, wsgi.py
 │   ├── .env.example
 │   └── requirements.txt
 ├── FrontEnd/
 │   └── src/
-│       ├── components/          # CameraCaptura.jsx (estação web), Pills, Sidebar, Topbar, Toast
+│       ├── __tests__/           # Testes Vitest + Testing Library (utils, api, componentes, páginas)
+│       ├── components/          # CameraCaptura.jsx (estação web), ErrorBoundary, PaginationBar, Pills
 │       ├── lib/                 # api.js (Bearer token em sessionStorage + handler 401)
 │       └── pages/               # Login, Dashboard, Alunos, Funcionários, Cadastro, Perfil, Monitoramento, Alertas, Relatórios, Configurações
 ├── portaria/
+│   ├── tests/                   # Testes unitários offline (tracker, engine, spool SQLite WAL, HUD)
 │   ├── camera.py                # CameraStream em thread dedicada (CAP_DSHOW / MJPG / RTSP)
 │   ├── tracker.py               # FaceTracker multi-rosto por IoU e centróide
 │   ├── engine.py                # RecognitionWorker (YuNet redimensionado + matching NumPy)
@@ -109,6 +111,8 @@ O motor de regras (`BackEnd/core/services/access_service.py`) processa cada pass
 │   ├── reconhecimento.py        # Orquestrador principal da portaria (--source, --modo, --headless, --demo)
 │   ├── cadastrar_rosto.py       # Estação CLI alternativa para cadastro facial na API
 │   └── .env.example
+├── docs/                        # Documentação técnica modular completa (01 a 08)
+├── scripts/                     # run_all_tests.ps1 e smoke_deploy.py
 ├── banco.sql                    # Referência DDL completa do PostgreSQL v2.0
 └── README.md
 ```
@@ -170,7 +174,24 @@ Parâmetros opcionais úteis:
 
 ## Verificações e Testes
 
-O projeto possui uma suíte automatizada em 6 camadas (unitários, integração, interface, portaria offline e smoke test HTTP de implantação) + pipeline CI em `.github/workflows/ci.yml`.
+O projeto possui uma suíte automatizada em 6 camadas (unitários, integração, interface, portaria offline e smoke test HTTP de implantação) + pipeline CI em `.github/workflows/ci.yml`. Veja detalhes completos em [08 — Testes e CI/CD](docs/08-testes-ci.md).
+
+---
+
+## Documentação Completa (`docs/`)
+
+Para documentação técnica detalhada por módulo, acesse o índice em [docs/README.md](docs/README.md):
+
+| Guia | Descrição |
+|---|---|
+| [01 — Arquitetura do Sistema](docs/01-arquitetura.md) | Subsistemas desacoplados, diagramas de fluxo e decisões arquiteturais |
+| [02 — Banco de Dados](docs/02-banco-de-dados.md) | Diagrama ER, 14 tabelas, constraints, `pg_trgm`, 30 índices e backup |
+| [03 — Referência da API REST](docs/03-api-referencia.md) | 27 endpoints HTTP, matriz RBAC, paginação e payloads JSON |
+| [04 — Segurança e LGPD](docs/04-seguranca-lgpd.md) | HKDF-SHA256, AES-256-GCM + AAD, rotação de chaves, tokens e auditoria |
+| [05 — Módulo de Portaria e Biometria](docs/05-modulo-portaria.md) | Pipeline OpenCV 5 (YuNet + SFace), tracker IoU, spool WAL e CLI |
+| [06 — Guia do Front-end](docs/06-frontend-guia.md) | React 18 + Vite, `api.js`, polling `/api/live/`, webcam WebRTC e `ErrorBoundary` |
+| [07 — Instalação e Implantação](docs/07-instalacao-implantacao.md) | Setup Windows/Linux, variáveis `.env`, checklist de produção e troubleshooting |
+| [08 — Testes e CI/CD](docs/08-testes-ci.md) | 6 camadas automatizadas (61 testes + build + smoke HTTP) e GitHub Actions |
 
 ### Rodar tudo de uma vez (Windows PowerShell)
 
